@@ -209,7 +209,6 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
     amp_scalar = GradScaler(enabled=use_amp)
     scalar_meter = misc.ScalarMeter(loss="samp_avg:.4f", batch_time="step_sum:.3f", acc_top1="samp_avg:>6.2%")
     _btimer = ttime()
-    rs_loss_fn = RS_Loss(lamda=args.alpha, margin=args.rs_margin);
     for i_batch, (images, target) in tqdm.tqdm(enumerate(dataloader, 1), total=len(dataloader), dynamic_ncols=True, disable=not GVM.args.show_bar):
         images: Tensor = images.cuda(non_blocking=True)
         target: Tensor = target.cuda(non_blocking=True)
