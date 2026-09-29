@@ -220,7 +220,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
 
         with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=use_amp):
             logits: Tensor = model(mix_img)
-        if taskid == 0:
+        if taskid == 1:
             features = model.encode_image(images, pre_logits=True)
         if i_batch == 1:
             if args.seperate_head:
@@ -229,7 +229,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
                 assert logits.shape[1] == len(GVM.cl_mngr.sofar_task_classes)
 
         ce_loss = criterion(logits / temperature, mix_lbl)
-        if taskid == 0:
+        if taskid == 1:
               lambda_rs = 0.5 * min(1.0, (curr_epoch - 1) / 10)
               rs_loss = rs_loss_fn(features.float(), target)
               loss = ce_loss + lambda_rs * rs_loss
