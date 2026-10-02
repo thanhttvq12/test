@@ -172,7 +172,7 @@ def set_learning_rates(GVM: GlobalVarsManager, model: VisionTransformer, base_lr
             param_lr_groups[_group_idx]['params'].append(p)
             lr_param_dict[param_lr_groups[_group_idx]['lr']].append(name)
     return param_lr_groups
-
+# thêm class RS_loss của risat
 class RS_Loss(nn.Module):
     def __init__(self, lamda=0.5, margin=0.5):
         super(RS_Loss, self).__init__()
@@ -202,7 +202,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
     assert temperature > 0.
 
     _use_cutmixup = args.prob_cutmixup > 0
-    rs_loss_fn = RS_Loss(lamda=0.5, margin=0.5) if taskid == 1 else None;
+    rs_loss_fn = RS_Loss(lamda=0.5, margin=0.5) if taskid == 1 else None; #tạo một thục thể class rs loss
     if _use_cutmixup:
         cutmixup_fn = Mixup(mixup_alpha=1., cutmix_alpha=1., prob=args.prob_cutmixup, switch_prob=0.5, mode='batch', num_classes=len(GVM.cl_mngr.current_task_classes))
 
@@ -221,7 +221,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
         with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=use_amp):
             logits: Tensor = model(mix_img)
         if taskid == 1:
-            features = model.encode_image(images, pre_logits=True)
+            features = model.encode_image(images, pre_logits=True) #tạo feature 
         if i_batch == 1:
             if args.seperate_head:
                 assert logits.shape[1] == len(GVM.cl_mngr.current_task_classes)
@@ -230,9 +230,9 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
 
         ce_loss = criterion(logits / temperature, mix_lbl)
         if taskid == 1:
-              lambda_rs = 0.5 * min(1.0, (curr_epoch - 1) / 10)
-              rs_loss = rs_loss_fn(features.float(), target)
-              loss = ce_loss + lambda_rs * rs_loss
+              lambda_rs = 0.5 * min(1.0, (curr_epoch - 1) / 10) #tính lambda
+              rs_loss = rs_loss_fn(features.float(), target) # tính rs loss
+              loss = ce_loss + lambda_rs * rs_loss # tính loss
         else:
             loss = ce_loss
 
