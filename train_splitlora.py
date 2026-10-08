@@ -195,6 +195,29 @@ class RS_Loss(nn.Module):
                self.lamda * neg_loss.sum() / (mask_neg.sum() + 1e-6)
 
         return loss
+class BaseAttention(nn.Module):
+
+    def __init__(GVM):
+        super(BaseAttention, GVM).__init__()
+
+    def forward(GVM, x):
+        encoded_x = GVM.encoder(x)
+        reconstructed_x = GVM.decoder(encoded_x)
+        return reconstructed_x + x
+
+class AutoencoderSigmoid(BaseAttention):
+    def __init__(GVM, input_dims=768, code_dims=384):
+        super(AutoencoderSigmoid, GVM).__init__()
+        GVM.encoder = nn.Sequential(
+            nn.Linear(input_dims, 64),
+            nn.GELU(),
+            nn.Linear(64, code_dims),
+            nn.GELU())
+        GVM.decoder = nn.Sequential(
+            nn.Linear(code_dims, 64),
+            nn.GELU(),
+            nn.Linear(64, input_dims),
+            nn.Sigmoid())
 def _inc_loss(GVM, features, features_old):
         features_old = GVM.old_ae(features_old)
         loss_align = nn.MSELoss()(features, features_old)
@@ -205,7 +228,26 @@ def _inc_loss(GVM, features, features_old):
         similarity = torch.matmul(protos, features_old_norm.t())
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
         return GVM.args.beta * loss_align + GVM.args.gamma * loss_orth
- def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
+
+def _extract_vectors(self, loader):
+        self._network.eval()
+        vectors, targets = [], []
+        for _, _inputs, _targets in loader:
+            _targets = _targets.numpy()
+            if isinstance(self._network, nn.DataParallel):
+                _vectors = tensor2numpy(
+                    self._network.module.extract_vector(_inputs.to(self._device))
+                )
+            else:
+                _vectors = tensor2numpy(
+                    self._network.extract_vector(_inputs.to(self._device))
+                )
+
+            vectors.append(_vectors)
+            targets.append(_targets)
+
+        return np.concatenate(vectors), np.concatenate(targets)
+def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
         if hasattr(GVM, '_class_means') and GVM._class_means is not None and not check_diff:
             ori_classes = GVM._class_means.shape[0]
             assert ori_classes == GVM._known_classes
