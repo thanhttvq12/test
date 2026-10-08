@@ -12,7 +12,7 @@ from copy import deepcopy
 import warnings
 import scipy.ndimage
 warnings.filterwarnings('ignore')
-
+from utils.toolkit import tensor2numpy
 import numpy as np
 import torch
 from torch import nn, Tensor
@@ -229,24 +229,19 @@ def _inc_loss(GVM, features, features_old):
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
         return GVM.args.beta * loss_align + GVM.args.gamma * loss_orth
 
-def _extract_vectors(self, loader):
-        self._network.eval()
-        vectors, targets = [], []
-        for _, _inputs, _targets in loader:
-            _targets = _targets.numpy()
-            if isinstance(self._network, nn.DataParallel):
-                _vectors = tensor2numpy(
-                    self._network.module.extract_vector(_inputs.to(self._device))
-                )
-            else:
-                _vectors = tensor2numpy(
-                    self._network.extract_vector(_inputs.to(self._device))
-                )
+def _extract_vectors(model, loader):
+    model.eval()
+    device = next(model.parameters()).device
+    vectors, targets = [], []
 
-            vectors.append(_vectors)
-            targets.append(_targets)
+    for images, labels in loader:
+        images = images.to(device, non_blocking=True)
+        features = model.encode_image(images, pre_logits=True)
 
-        return np.concatenate(vectors), np.concatenate(targets)
+        vectors.append(features.float().cpu().numpy())
+        targets.append(labels.cpu().numpy())
+
+    return np.concatenate(vectors), np.concatenate(targets)
 def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
         if hasattr(GVM, '_class_means') and GVM._class_means is not None and not check_diff:
             ori_classes = GVM._class_means.shape[0]
