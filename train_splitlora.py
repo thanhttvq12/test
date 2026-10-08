@@ -179,7 +179,7 @@ class RS_Loss(nn.Module):
         super(RS_Loss, self).__init__()
         self.lamda = lamda
         self.margin = margin
-
+        self.old_ae = None
     def forward(self, features, labels):
         device = features.device
         features = F.normalize(features, p=2, dim=1)
@@ -197,16 +197,16 @@ class RS_Loss(nn.Module):
 
         return loss
 def _inc_loss(GVM, features, features_old):
-        features_old = self.old_ae(features_old)
+        features_old = GVM.old_ae(features_old)
         loss_align = nn.MSELoss()(features, features_old)
         features_old_norm = F.normalize(features_old, p=2, dim=1)
-        protos = torch.from_numpy(self._class_means).float().to(self._device,non_blocking=True)
-        protos = self.old_ae(protos)
+        protos = torch.from_numpy(GVM._class_means).float().to(GVM._device,non_blocking=True)
+        protos = GVM.old_ae(protos)
         protos = F.normalize(protos, p=2, dim=1)
         similarity = torch.matmul(protos, features_old_norm.t())
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
-        return self.args["beta"] * loss_align + self.args["gamma"] * loss_orth
-def _compute_class_mean(self, data_manager, check_diff=False, oracle=False):
+        return GVM.args["beta"] * loss_align + GVm.args["gamma"] * loss_orth
+def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
         if hasattr(self, '_class_means') and self._class_means is not None and not check_diff:
             ori_classes = self._class_means.shape[0]
             assert ori_classes == self._known_classes
@@ -583,9 +583,9 @@ if __name__ == "__main__":
             pass
         GVM.update_label_maps(taskid, current_task_classes)
         GVM.cache_dict['training_string'] = args.training_string
+        model = train_one_task(GVM, taskid, current_task_classes, model,args)
         GVM.old_model = deepcopy(model).eval()
         GVM.old_model.requires_grad_(False)
-        model = train_one_task(GVM, taskid, current_task_classes, model,args)
         evaluate_tasks_sofar(GVM, taskid, model)
         task_ending_info(GVM)
 
