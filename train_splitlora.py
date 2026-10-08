@@ -12,7 +12,6 @@ from copy import deepcopy
 import warnings
 import scipy.ndimage
 warnings.filterwarnings('ignore')
-from utils.toolkit import tensor2numpy
 import numpy as np
 import torch
 from torch import nn, Tensor
@@ -228,7 +227,7 @@ def _inc_loss(GVM, features, features_old):
         similarity = torch.matmul(protos, features_old_norm.t())
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
         return GVM.args.beta * loss_align + GVM.args.gamma * loss_orth
-
+@torch.no_grad()
 def _extract_vectors(model, loader):
     model.eval()
     device = next(model.parameters()).device
