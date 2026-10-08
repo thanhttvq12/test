@@ -267,10 +267,9 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
         if taskid == 1:
             features = model.encode_image(images, pre_logits=True) #tạo feature 
         else:
-            features = self._network_module_ptr.extract_vector(inputs)
-            features_old = self.old_network_module_ptr.extract_vector(inputs)
-            
-            
+            features = model.encode_image(images, pre_logits=True)
+            with torch.no_grad():
+                  features_old = GVM.old_model.encode_image(images, pre_logits=True)
         if i_batch == 1:
             if args.seperate_head:
                 assert logits.shape[1] == len(GVM.cl_mngr.current_task_classes)
