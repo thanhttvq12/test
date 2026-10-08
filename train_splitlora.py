@@ -196,7 +196,7 @@ class RS_Loss(nn.Module):
                self.lamda * neg_loss.sum() / (mask_neg.sum() + 1e-6)
 
         return loss
-def _inc_loss(self, features, features_old):
+def _inc_loss(GVM, features, features_old):
         features_old = self.old_ae(features_old)
         loss_align = nn.MSELoss()(features, features_old)
         features_old_norm = F.normalize(features_old, p=2, dim=1)
@@ -282,7 +282,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
               rs_loss = rs_loss_fn(features.float(), target) # tính rs loss
               loss = ce_loss + lambda_rs * rs_loss # tính loss
         else:
-            loss_inc = self._inc_loss(features, features_old)
+            loss_inc = _inc_loss(GVM, features, features_old)
             loss = ce_loss + loss_inc
 
         optimizer.zero_grad()
@@ -583,6 +583,8 @@ if __name__ == "__main__":
             pass
         GVM.update_label_maps(taskid, current_task_classes)
         GVM.cache_dict['training_string'] = args.training_string
+        GVM.old_model = deepcopy(model).eval()
+        GVM.old_model.requires_grad_(False)
         model = train_one_task(GVM, taskid, current_task_classes, model,args)
         evaluate_tasks_sofar(GVM, taskid, model)
         task_ending_info(GVM)
