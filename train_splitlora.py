@@ -179,7 +179,6 @@ class RS_Loss(nn.Module):
         super(RS_Loss, self).__init__()
         self.lamda = lamda
         self.margin = margin
-        self.old_ae = None
     def forward(self, features, labels):
         device = features.device
         features = F.normalize(features, p=2, dim=1)
@@ -205,40 +204,40 @@ def _inc_loss(GVM, features, features_old):
         protos = F.normalize(protos, p=2, dim=1)
         similarity = torch.matmul(protos, features_old_norm.t())
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
-        return GVM.args.beta * loss_align + GVm.args.gamma * loss_orth
-def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
-        if hasattr(self, '_class_means') and self._class_means is not None and not check_diff:
-            ori_classes = self._class_means.shape[0]
-            assert ori_classes == self._known_classes
-            new_class_means = np.zeros((self._total_classes, self.feature_dim))
-            new_class_means[:self._known_classes] = self._class_means
-            self._class_means = new_class_means
-            new_class_cov = torch.zeros((self._total_classes, self.feature_dim, self.feature_dim))
-            new_class_cov[:self._known_classes] = self._class_covs
-            self._class_covs = new_class_cov
+        return GVM.args.beta * loss_align + GVM.args.gamma * loss_orth
+ def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
+        if hasattr(GVM, '_class_means') and GVM._class_means is not None and not check_diff:
+            ori_classes = GVM._class_means.shape[0]
+            assert ori_classes == GVM._known_classes
+            new_class_means = np.zeros((GVM._total_classes, GVM.feature_dim))
+            new_class_means[:GVM._known_classes] = GVM._class_means
+            GVM._class_means = new_class_means
+            new_class_cov = torch.zeros((GVM._total_classes, GVM.feature_dim, GVM.feature_dim))
+            new_class_cov[:GVM._known_classes] = GVM._class_covs
+            GVM._class_covs = new_class_cov
         elif not check_diff:
-            self._class_means = np.zeros((self._total_classes, self.feature_dim))
-            self._class_covs = torch.zeros((self._total_classes, self.feature_dim, self.feature_dim))
+            GVM._class_means = np.zeros((GVM._total_classes, GVM.feature_dim))
+            GVM._class_covs = torch.zeros((GVM._total_classes, GVM.feature_dim, GVM.feature_dim))
 
         radius = []
-        for class_idx in range(self._known_classes, self._total_classes):
+        for class_idx in range(GVM._known_classes, GVM._total_classes):
 
             data, targets, idx_dataset = data_manager.get_dataset(np.arange(class_idx, class_idx + 1), source='train',
                                                                   mode='test', ret_data=True)
             idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-            vectors, _ = self._extract_vectors(idx_loader)
+            vectors, _ = GVM._extract_vectors(idx_loader)
             class_mean = np.mean(vectors, axis=0)
-            if self._cur_task == 0:
+            if GVM._cur_task == 0:
                 cov = np.cov(vectors.T)+ np.eye(class_mean.shape[-1]) * 1e-4
                 radius.append(np.trace(cov) /768)
             class_cov = torch.cov(torch.tensor(vectors, dtype=torch.float64).T) + torch.eye(class_mean.shape[-1]) * 1e-3
 
-            self._class_means[class_idx, :] = class_mean
-            self._class_covs[class_idx, ...] = class_cov
+            GVM._class_means[class_idx, :] = class_mean
+            GVM._class_covs[class_idx, ...] = class_cov
 
-        if self._cur_task == 0:
-                self.radius = np.sqrt(np.mean(radius))
-                print(self.radius)
+        if GVM._cur_task == 0:
+                GVM.radius = np.sqrt(np.mean(radius))
+                print(GVM.radius)
 def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoader, model: VisionTransformer, criterion: nn.CrossEntropyLoss, optimizer: torch.optim.Optimizer,taskid: int) -> str:
     args = GVM.args
     temperature: float = args.temperature
@@ -246,7 +245,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
     assert temperature > 0.
 
     _use_cutmixup = args.prob_cutmixup > 0
-    rs_loss_fn = RS_Loss(lamda=0.5, margin=0.1) if taskid == 1 else None; #tạo một thục thể class rs loss
+    rs_loss_fn = RS_Loss(lamda=0.5, margin=0.1) if taskid == 0 else None; #tạo một thục thể class rs loss
     if _use_cutmixup:
         cutmixup_fn = Mixup(mixup_alpha=1., cutmix_alpha=1., prob=args.prob_cutmixup, switch_prob=0.5, mode='batch', num_classes=len(GVM.cl_mngr.current_task_classes))
 
