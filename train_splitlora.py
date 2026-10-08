@@ -172,6 +172,7 @@ def set_learning_rates(GVM: GlobalVarsManager, model: VisionTransformer, base_lr
             param_lr_groups[_group_idx]['params'].append(p)
             lr_param_dict[param_lr_groups[_group_idx]['lr']].append(name)
     return param_lr_groups
+
 # thêm class RS_loss của risat
 class RS_Loss(nn.Module):
     def __init__(self, lamda=0.5, margin=0.5):
@@ -195,6 +196,49 @@ class RS_Loss(nn.Module):
                self.lamda * neg_loss.sum() / (mask_neg.sum() + 1e-6)
 
         return loss
+def _inc_loss(self, features, features_old):
+        features_old = self.old_ae(features_old)
+        loss_align = nn.MSELoss()(features, features_old)
+        features_old_norm = F.normalize(features_old, p=2, dim=1)
+        protos = torch.from_numpy(self._class_means).float().to(self._device,non_blocking=True)
+        protos = self.old_ae(protos)
+        protos = F.normalize(protos, p=2, dim=1)
+        similarity = torch.matmul(protos, features_old_norm.t())
+        loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
+        return self.args["beta"] * loss_align + self.args["gamma"] * loss_orth
+def _compute_class_mean(self, data_manager, check_diff=False, oracle=False):
+        if hasattr(self, '_class_means') and self._class_means is not None and not check_diff:
+            ori_classes = self._class_means.shape[0]
+            assert ori_classes == self._known_classes
+            new_class_means = np.zeros((self._total_classes, self.feature_dim))
+            new_class_means[:self._known_classes] = self._class_means
+            self._class_means = new_class_means
+            new_class_cov = torch.zeros((self._total_classes, self.feature_dim, self.feature_dim))
+            new_class_cov[:self._known_classes] = self._class_covs
+            self._class_covs = new_class_cov
+        elif not check_diff:
+            self._class_means = np.zeros((self._total_classes, self.feature_dim))
+            self._class_covs = torch.zeros((self._total_classes, self.feature_dim, self.feature_dim))
+
+        radius = []
+        for class_idx in range(self._known_classes, self._total_classes):
+
+            data, targets, idx_dataset = data_manager.get_dataset(np.arange(class_idx, class_idx + 1), source='train',
+                                                                  mode='test', ret_data=True)
+            idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+            vectors, _ = self._extract_vectors(idx_loader)
+            class_mean = np.mean(vectors, axis=0)
+            if self._cur_task == 0:
+                cov = np.cov(vectors.T)+ np.eye(class_mean.shape[-1]) * 1e-4
+                radius.append(np.trace(cov) /768)
+            class_cov = torch.cov(torch.tensor(vectors, dtype=torch.float64).T) + torch.eye(class_mean.shape[-1]) * 1e-3
+
+            self._class_means[class_idx, :] = class_mean
+            self._class_covs[class_idx, ...] = class_cov
+
+        if self._cur_task == 0:
+                self.radius = np.sqrt(np.mean(radius))
+                print(self.radius)
 def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoader, model: VisionTransformer, criterion: nn.CrossEntropyLoss, optimizer: torch.optim.Optimizer,taskid: int) -> str:
     args = GVM.args
     temperature: float = args.temperature
@@ -222,6 +266,11 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
             logits: Tensor = model(mix_img)
         if taskid == 1:
             features = model.encode_image(images, pre_logits=True) #tạo feature 
+        else:
+            features = self._network_module_ptr.extract_vector(inputs)
+            features_old = self.old_network_module_ptr.extract_vector(inputs)
+            
+            
         if i_batch == 1:
             if args.seperate_head:
                 assert logits.shape[1] == len(GVM.cl_mngr.current_task_classes)
@@ -234,7 +283,8 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
               rs_loss = rs_loss_fn(features.float(), target) # tính rs loss
               loss = ce_loss + lambda_rs * rs_loss # tính loss
         else:
-            loss = ce_loss
+            loss_inc = self._inc_loss(features, features_old)
+            loss = ce_loss + loss_inc
 
         optimizer.zero_grad()
         amp_scalar.scale(loss).backward()
@@ -522,7 +572,6 @@ if __name__ == "__main__":
             model: VisionTransformer = timm.create_model(args.model, pretrained=True, pretrained_strict=False, **_head_dim_arg_dict,
                                                          other_args_dict=_other_args_dict)
             GVM.cache_dict['pretrained_cfg'] = deepcopy(model.pretrained_cfg)
-
         model.num_tasks = args.num_tasks
         from argparse import Namespace
         param = ['k','v']
