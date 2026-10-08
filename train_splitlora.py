@@ -200,12 +200,12 @@ def _inc_loss(GVM, features, features_old):
         features_old = GVM.old_ae(features_old)
         loss_align = nn.MSELoss()(features, features_old)
         features_old_norm = F.normalize(features_old, p=2, dim=1)
-        protos = torch.from_numpy(GVM._class_means).float().to(GVM._device,non_blocking=True)
+        protos = torch.from_numpy(GVM._class_means).float().to(features.device,non_blocking=True)
         protos = GVM.old_ae(protos)
         protos = F.normalize(protos, p=2, dim=1)
         similarity = torch.matmul(protos, features_old_norm.t())
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
-        return GVM.args["beta"] * loss_align + GVm.args["gamma"] * loss_orth
+        return GVM.args.beta * loss_align + GVm.args.gamma * loss_orth
 def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
         if hasattr(self, '_class_means') and self._class_means is not None and not check_diff:
             ori_classes = self._class_means.shape[0]
@@ -264,7 +264,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
 
         with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=use_amp):
             logits: Tensor = model(mix_img)
-        if taskid == 1:
+        if taskid == 0:
             features = model.encode_image(images, pre_logits=True) #tạo feature 
         else:
             features = model.encode_image(images, pre_logits=True)
@@ -277,7 +277,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
                 assert logits.shape[1] == len(GVM.cl_mngr.sofar_task_classes)
 
         ce_loss = criterion(logits / temperature, mix_lbl)
-        if taskid == 1:
+        if taskid == 0:
               lambda_rs = 0.5 * min(1.0, (curr_epoch - 1) / 10) #tính lambda
               rs_loss = rs_loss_fn(features.float(), target) # tính rs loss
               loss = ce_loss + lambda_rs * rs_loss # tính loss
