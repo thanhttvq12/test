@@ -243,36 +243,22 @@ def _extract_vectors(model, loader):
 
         return np.concatenate(vectors), np.concatenate(targets)
 def _compute_class_mean(GVM, model, task_classes):
-        dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=GVM.args.transform_type,target_map_to_local=False,expand_times=1,)
-        loader = DataLoader(dataset,batch_size=GVM.args.batch_size,shuffle=False,num_workers=GVM.args.workers,)
-        vectors, targets = _extract_vectors(model, loader)
-        if hasattr(GVM, '_class_means') and GVM._class_means is not None and not check_diff:
-            ori_classes = GVM._class_means.shape[0]
-            assert ori_classes == GVM._known_classes
-            new_class_means = np.zeros((GVM._total_classes, GVM.feature_dim))
-            new_class_means[:GVM._known_classes] = GVM._class_means
-            GVM._class_means = new_class_means
-            new_class_cov = torch.zeros((GVM._total_classes, GVM.feature_dim, GVM.feature_dim))
-            new_class_cov[:GVM._known_classes] = GVM._class_covs
-            GVM._class_covs = new_class_cov
-        elif not check_diff:
-            GVM._class_means = np.zeros((GVM._total_classes, GVM.feature_dim))
-            GVM._class_covs = torch.zeros((GVM._total_classes, GVM.feature_dim, GVM.feature_dim))
-            radius = []
-            for class_idx in range(GVM._known_classes, GVM._total_classes):
-                data, targets, idx_dataset = data_manager.get_dataset(np.arange(class_idx, class_idx + 1), source='train',mode='test', ret_data=True)
-                idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-                vectors, _ = GVM._extract_vectors(idx_loader)
-                class_mean = np.mean(vectors, axis=0)
-                if GVM._cur_task == 0:
-                    cov = np.cov(vectors.T)+ np.eye(class_mean.shape[-1]) * 1e-4
-                    radius.append(np.trace(cov) /768)
-                    class_cov = torch.cov(torch.tensor(vectors, dtype=torch.float64).T) + torch.eye(class_mean.shape[-1]) * 1e-3
-                    GVM._class_means[class_idx, :] = class_mean
-                    GVM._class_covs[class_idx, ...] = class_cov
-            if GVM._cur_task == 0:
-                GVM.radius = np.sqrt(np.mean(radius))
-                print(GVM.radius)
+    dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=GVM.args.transform_type,target_map_to_local=False,expand_times=1,)
+    loader = DataLoader(dataset,batch_size=GVM.args.batch_size,shuffle=False,num_workers=GVM.args.workers,)
+    vectors, targets = _extract_vectors(model, loader)
+    targets = targets.astype(np.int64)
+    old_means = getattr(GVM, "_class_means", None)
+    old_count = 0 if old_means is None else old_means.shape[0]
+    total_count = int(targets.max()) + 1
+    means = np.zeros((max(old_count, total_count), vectors.shape[1]),dtype=np.float32,)
+
+    if old_means is not None:
+        means[:old_count] = old_means
+
+    for class_id in np.unique(targets):
+        means[class_id] = vectors[targets == class_id].mean(axis=0)
+
+    GVM._class_means = means
 def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoader, model: VisionTransformer, criterion: nn.CrossEntropyLoss, optimizer: torch.optim.Optimizer,taskid: int) -> str:
     args = GVM.args
     temperature: float = args.temperature
