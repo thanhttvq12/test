@@ -79,8 +79,8 @@ def get_args():
     parser.add_argument('--logit_scale', type=float, default=4.605170249938965, help='0 | 4.605170249938965')
     parser.add_argument('--logit_scale_trainable', type=misc.str2bool, default=False)
     parser.add_argument('--seperate_head', type=misc.str2bool, default=True)
-    parser.add_argument('--beta', type=float, default=1.0)
-    parser.add_argument('--gamma', type=float, default=1.0)
+    parser.add_argument('--beta', type=float, default=3.0)
+    parser.add_argument('--gamma', type=float, default=1.5)
     parser.add_argument('--ln_loss_lam', type=float, default=1.)
     parser.add_argument('--refine_head', type=misc.str2bool, default=False)
     parser.add_argument('--transform_type', type=str, choices=('timm', 'autoaug', 'prototype', 'clip'), default='autoaug')
@@ -175,7 +175,7 @@ def set_learning_rates(GVM: GlobalVarsManager, model: VisionTransformer, base_lr
 
 # thêm class RS_loss của risat
 class RS_Loss(nn.Module):
-    def __init__(self, lamda=0.5, margin=0.5):
+    def __init__(self, lamda=1.5, margin=0.4):
         super(RS_Loss, self).__init__()
         self.lamda = lamda
         self.margin = margin
