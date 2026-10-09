@@ -227,7 +227,7 @@ def _inc_loss(GVM, features, features_old):
         similarity = torch.matmul(protos, features_old_norm.t())
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
         return GVM.args.beta * loss_align + GVM.args.gamma * loss_orth
-    @torch.no_grad()
+@torch.no_grad()
 def _extract_vectors(model, loader):
         model.eval()
         device = next(model.parameters()).device
@@ -242,6 +242,7 @@ def _extract_vectors(model, loader):
 
         return np.concatenate(vectors), np.concatenate(targets)
 def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
+        loader = DataLoader(dataset,batch_size=GVM.args.batch_size,shuffle=False,num_workers=GVM.args.workers,)
         if hasattr(GVM, '_class_means') and GVM._class_means is not None and not check_diff:
             ori_classes = GVM._class_means.shape[0]
             assert ori_classes == GVM._known_classes
@@ -363,8 +364,7 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
     model = modify_head(GVM, model, training=True, task_classes=task_classes)
 
     dataset = define_dataset(GVM,task_classes,training=True,use_eval_transform=True,transform_type=GVM.args.transform_type,target_map_to_local=False,expand_times=1,)
-
-    loader = DataLoader(dataset,batch_size=GVM.args.batch_size,shuffle=False,num_workers=GVM.args.workers,)
+    dataloader = DataLoader(dataset,batch_size=args.batch_size,shuffle=True,num_workers=args.workers,drop_last=args.prob_cutmixup > 0,)
     
     vectors, targets = _extract_vectors(model, loader)
     criterion = nn.CrossEntropyLoss().cuda()
