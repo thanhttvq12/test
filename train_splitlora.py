@@ -228,20 +228,31 @@ def _inc_loss(GVM, features, features_old):
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
         return GVM.args.beta * loss_align + GVM.args.gamma * loss_orth
 @torch.no_grad()
-def _extract_vectors(model, loader):
-    model.eval()
-    device = next(model.parameters()).device
-    vectors, targets = [], []
+class BaseLearner(object):
+    def __init__(self, args):
+        self._cur_task = -1
+        self._known_classes = 0
+        self._total_classes = 0
+        self._network = None
+        self._old_network = None
+        self._data_memory, self._targets_memory = np.array([]), np.array([])
+        self.topk = 5
+        self._device = args["device"][0]
+        self._multiple_gpus = args["device"]
+    def _extract_vectors(model, loader):
+        model.eval()
+        device = next(model.parameters()).device
+        vectors, targets = [], []
 
-    for images, labels in loader:
-        images = images.to(device, non_blocking=True)
-        features = model.encode_image(images, pre_logits=True)
+        for images, labels in loader:
+             images = images.to(device, non_blocking=True)
+             features = model.encode_image(images, pre_logits=True)
 
-        vectors.append(features.float().cpu().numpy())
-        targets.append(labels.cpu().numpy())
+             vectors.append(features.float().cpu().numpy())
+             targets.append(labels.cpu().numpy())
 
-    return np.concatenate(vectors), np.concatenate(targets)
-def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
+        return np.concatenate(vectors), np.concatenate(targets)
+    def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
         if hasattr(GVM, '_class_means') and GVM._class_means is not None and not check_diff:
             ori_classes = GVM._class_means.shape[0]
             assert ori_classes == GVM._known_classes
@@ -255,23 +266,22 @@ def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
             GVM._class_means = np.zeros((GVM._total_classes, GVM.feature_dim))
             GVM._class_covs = torch.zeros((GVM._total_classes, GVM.feature_dim, GVM.feature_dim))
 
-        radius = []
-        for class_idx in range(GVM._known_classes, GVM._total_classes):
+            radius = []
+            for class_idx in range(GVM._known_classes, GVM._total_classes):
 
-            data, targets, idx_dataset = data_manager.get_dataset(np.arange(class_idx, class_idx + 1), source='train',
+                data, targets, idx_dataset = data_manager.get_dataset(np.arange(class_idx, class_idx + 1), source='train',
                                                                   mode='test', ret_data=True)
-            idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
-            vectors, _ = GVM._extract_vectors(idx_loader)
-            class_mean = np.mean(vectors, axis=0)
-            if GVM._cur_task == 0:
-                cov = np.cov(vectors.T)+ np.eye(class_mean.shape[-1]) * 1e-4
-                radius.append(np.trace(cov) /768)
-            class_cov = torch.cov(torch.tensor(vectors, dtype=torch.float64).T) + torch.eye(class_mean.shape[-1]) * 1e-3
+                idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
+                vectors, _ = GVM._extract_vectors(idx_loader)
+                class_mean = np.mean(vectors, axis=0)
+                if GVM._cur_task == 0:
+                    cov = np.cov(vectors.T)+ np.eye(class_mean.shape[-1]) * 1e-4
+                    radius.append(np.trace(cov) /768)
+                    class_cov = torch.cov(torch.tensor(vectors, dtype=torch.float64).T) + torch.eye(class_mean.shape[-1]) * 1e-3
+                    GVM._class_means[class_idx, :] = class_mean
+                    GVM._class_covs[class_idx, ...] = class_cov
 
-            GVM._class_means[class_idx, :] = class_mean
-            GVM._class_covs[class_idx, ...] = class_cov
-
-        if GVM._cur_task == 0:
+             if GVM._cur_task == 0:
                 GVM.radius = np.sqrt(np.mean(radius))
                 print(GVM.radius)
 def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoader, model: VisionTransformer, criterion: nn.CrossEntropyLoss, optimizer: torch.optim.Optimizer,taskid: int) -> str:
