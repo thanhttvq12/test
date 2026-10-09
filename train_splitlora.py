@@ -79,7 +79,8 @@ def get_args():
     parser.add_argument('--logit_scale', type=float, default=4.605170249938965, help='0 | 4.605170249938965')
     parser.add_argument('--logit_scale_trainable', type=misc.str2bool, default=False)
     parser.add_argument('--seperate_head', type=misc.str2bool, default=True)
-
+    parser.add_argument('--beta', type=float, default=1.0)
+    parser.add_argument('--gamma', type=float, default=1.0)
     parser.add_argument('--ln_loss_lam', type=float, default=1.)
     parser.add_argument('--refine_head', type=misc.str2bool, default=False)
     parser.add_argument('--transform_type', type=str, choices=('timm', 'autoaug', 'prototype', 'clip'), default='autoaug')
@@ -242,7 +243,9 @@ def _extract_vectors(model, loader):
 
         return np.concatenate(vectors), np.concatenate(targets)
 def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
+        dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=GVM.args.transform_type,target_map_to_local=False,expand_times=1,)
         loader = DataLoader(dataset,batch_size=GVM.args.batch_size,shuffle=False,num_workers=GVM.args.workers,)
+        vectors, targets = _extract_vectors(model, loader)
         if hasattr(GVM, '_class_means') and GVM._class_means is not None and not check_diff:
             ori_classes = GVM._class_means.shape[0]
             assert ori_classes == GVM._known_classes
@@ -255,12 +258,9 @@ def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
         elif not check_diff:
             GVM._class_means = np.zeros((GVM._total_classes, GVM.feature_dim))
             GVM._class_covs = torch.zeros((GVM._total_classes, GVM.feature_dim, GVM.feature_dim))
-
             radius = []
             for class_idx in range(GVM._known_classes, GVM._total_classes):
-
-                data, targets, idx_dataset = data_manager.get_dataset(np.arange(class_idx, class_idx + 1), source='train',
-                                                                  mode='test', ret_data=True)
+                data, targets, idx_dataset = data_manager.get_dataset(np.arange(class_idx, class_idx + 1), source='train',mode='test', ret_data=True)
                 idx_loader = DataLoader(idx_dataset, batch_size=batch_size, shuffle=False, num_workers=4)
                 vectors, _ = GVM._extract_vectors(idx_loader)
                 class_mean = np.mean(vectors, axis=0)
@@ -270,8 +270,7 @@ def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
                     class_cov = torch.cov(torch.tensor(vectors, dtype=torch.float64).T) + torch.eye(class_mean.shape[-1]) * 1e-3
                     GVM._class_means[class_idx, :] = class_mean
                     GVM._class_covs[class_idx, ...] = class_cov
-
-             if GVM._cur_task == 0:
+            if GVM._cur_task == 0:
                 GVM.radius = np.sqrt(np.mean(radius))
                 print(GVM.radius)
 def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoader, model: VisionTransformer, criterion: nn.CrossEntropyLoss, optimizer: torch.optim.Optimizer,taskid: int) -> str:
@@ -362,18 +361,19 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
 
     model: VisionTransformer = set_model_mode(GVM, model, training=True, training_string=GVM.cache_dict['training_string'],taskid=taskid)
     model = modify_head(GVM, model, training=True, task_classes=task_classes)
-
-    dataset = define_dataset(GVM,task_classes,training=True,use_eval_transform=True,transform_type=GVM.args.transform_type,target_map_to_local=False,expand_times=1,)
+    if taskid > 0 and getattr(GVM, "old_ae", None) is None:
+        GVM.old_ae = AutoencoderSigmoid(input_dims=model.num_features,code_dims=384,).to(next(model.parameters()).device)
+    dataset = define_dataset(GVM, task_classes,training=True,transform_type=args.transform_type,target_map_to_local=args.seperate_head,expand_times=args.expand_times,)
     dataloader = DataLoader(dataset,batch_size=args.batch_size,shuffle=True,num_workers=args.workers,drop_last=args.prob_cutmixup > 0,)
-    
-    vectors, targets = _extract_vectors(model, loader)
     criterion = nn.CrossEntropyLoss().cuda()
 
     if args.lr_scale == 1:
-        param_groups = filter(lambda p: p.requires_grad, model.parameters())
+        param_groups = [{"params": [p for p in model.parameters() if p.requires_grad],"lr": args.lr,}]
     else:
         param_groups = set_learning_rates(GVM, model, args.lr, args.lr_scale, args.lr_scale_patterns)
 
+    if taskid > 0:
+        param_groups.append({"params": GVM.old_ae.parameters(),"lr": args.lr,"weight_decay": args.weight_decay,})
     GVM.cache_dict['update_proj_dict'] = {}
     optimizer = create_optimizer_v2(param_groups, opt='adamW', lr=args.lr, weight_decay=args.weight_decay, foreach=True)
 
