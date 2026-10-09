@@ -227,19 +227,8 @@ def _inc_loss(GVM, features, features_old):
         similarity = torch.matmul(protos, features_old_norm.t())
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
         return GVM.args.beta * loss_align + GVM.args.gamma * loss_orth
-@torch.no_grad()
-class BaseLearner(object):
-    def __init__(self, args):
-        self._cur_task = -1
-        self._known_classes = 0
-        self._total_classes = 0
-        self._network = None
-        self._old_network = None
-        self._data_memory, self._targets_memory = np.array([]), np.array([])
-        self.topk = 5
-        self._device = args["device"][0]
-        self._multiple_gpus = args["device"]
-    def _extract_vectors(model, loader):
+    @torch.no_grad()
+def _extract_vectors(model, loader):
         model.eval()
         device = next(model.parameters()).device
         vectors, targets = [], []
@@ -252,7 +241,7 @@ class BaseLearner(object):
              targets.append(labels.cpu().numpy())
 
         return np.concatenate(vectors), np.concatenate(targets)
-    def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
+def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
         if hasattr(GVM, '_class_means') and GVM._class_means is not None and not check_diff:
             ori_classes = GVM._class_means.shape[0]
             assert ori_classes == GVM._known_classes
@@ -373,10 +362,11 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
     model: VisionTransformer = set_model_mode(GVM, model, training=True, training_string=GVM.cache_dict['training_string'],taskid=taskid)
     model = modify_head(GVM, model, training=True, task_classes=task_classes)
 
-    dataset = define_dataset(GVM, task_classes, training=True, transform_type=args.transform_type, target_map_to_local=args.seperate_head, expand_times=args.expand_times)
-    dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True, timeout=args.timeout if args.workers > 0 else 0,
-                            drop_last=args.prob_cutmixup > 0, persistent_workers=args.persistent_workers)
+    dataset = define_dataset(GVM,task_classes,training=True,use_eval_transform=True,transform_type=GVM.args.transform_type,target_map_to_local=False,expand_times=1,)
 
+    loader = DataLoader(dataset,batch_size=GVM.args.batch_size,shuffle=False,num_workers=GVM.args.workers,)
+    
+    vectors, targets = _extract_vectors(model, loader)
     criterion = nn.CrossEntropyLoss().cuda()
 
     if args.lr_scale == 1:
