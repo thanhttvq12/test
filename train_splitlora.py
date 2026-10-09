@@ -242,7 +242,7 @@ def _extract_vectors(model, loader):
              targets.append(labels.cpu().numpy())
 
         return np.concatenate(vectors), np.concatenate(targets)
-def _compute_class_mean(GVM, data_manager, check_diff=False, oracle=False):
+def _compute_class_mean(GVM, model, task_classes):
         dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=GVM.args.transform_type,target_map_to_local=False,expand_times=1,)
         loader = DataLoader(dataset,batch_size=GVM.args.batch_size,shuffle=False,num_workers=GVM.args.workers,)
         vectors, targets = _extract_vectors(model, loader)
@@ -619,6 +619,7 @@ if __name__ == "__main__":
         GVM.update_label_maps(taskid, current_task_classes)
         GVM.cache_dict['training_string'] = args.training_string
         model = train_one_task(GVM, taskid, current_task_classes, model,args)
+        _compute_class_mean(GVM, model, current_task_classes)
         GVM.old_model = deepcopy(model).eval()
         GVM.old_model.requires_grad_(False)
         evaluate_tasks_sofar(GVM, taskid, model)
