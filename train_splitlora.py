@@ -266,7 +266,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
     assert temperature > 0.
 
     _use_cutmixup = args.prob_cutmixup > 0
-    rs_loss_fn = RS_Loss(lamda=0.5, margin=0.1) if taskid == 0 else None; #tạo một thục thể class rs loss
+    rs_loss_fn = RS_Loss(lamda=1.5, margin=0.4) if taskid == 0 else None; #tạo một thục thể class rs loss
     if _use_cutmixup:
         cutmixup_fn = Mixup(mixup_alpha=1., cutmix_alpha=1., prob=args.prob_cutmixup, switch_prob=0.5, mode='batch', num_classes=len(GVM.cl_mngr.current_task_classes))
 
