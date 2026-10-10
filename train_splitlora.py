@@ -300,10 +300,10 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
         if taskid == 0:
               lambda_rs = 0.5 * min(1.0, (curr_epoch - 1) / 10) #tính lambda
               rs_loss = rs_loss_fn(features.float(), target) # tính rs loss
-              loss = ce_loss + lambda_rs * rs_loss # tính loss
+              loss = lambda_rs * rs_loss # tính loss
         else:
             loss_inc = _inc_loss(GVM, features, features_old)
-            loss = ce_loss + loss_inc
+            loss =  loss_inc
 
         optimizer.zero_grad()
         amp_scalar.scale(loss).backward()
