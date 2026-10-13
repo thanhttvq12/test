@@ -195,6 +195,7 @@ class RS_Loss(nn.Module):
                self.lamda * neg_loss.sum() / (mask_neg.sum() + 1e-6)
 
         return loss
+# thêm class 
 class BaseAttention(nn.Module):
 
     def __init__(GVM):
@@ -204,7 +205,7 @@ class BaseAttention(nn.Module):
         encoded_x = GVM.encoder(x)
         reconstructed_x = GVM.decoder(encoded_x)
         return reconstructed_x + x
-
+#thêm class
 class AutoencoderSigmoid(BaseAttention):
     def __init__(GVM, input_dims=768, code_dims=384):
         super(AutoencoderSigmoid, GVM).__init__()
@@ -218,6 +219,8 @@ class AutoencoderSigmoid(BaseAttention):
             nn.GELU(),
             nn.Linear(64, input_dims),
             nn.Sigmoid())
+# thêm phương thức inc_loss từ risat ( đã điều chỉnh cho khớp với splitlora , chỉ thay tên biến chứ không sửa phần logic)
+# phương thức này dành cho các task > 0 
 def _inc_loss(GVM, features, features_old):
         features_old = GVM.old_ae(features_old)
         loss_align = nn.MSELoss()(features, features_old)
@@ -229,6 +232,7 @@ def _inc_loss(GVM, features, features_old):
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
         return GVM.args.beta * loss_align + GVM.args.gamma * loss_orth
 @torch.no_grad()
+# tính vecto ( phương thúc từ risat)
 def _extract_vectors(model, loader):
         model.eval()
         device = next(model.parameters()).device
@@ -242,6 +246,7 @@ def _extract_vectors(model, loader):
              targets.append(labels.cpu().numpy())
 
         return np.concatenate(vectors), np.concatenate(targets)
+# hàm tính prototype từ risat do splitlora do sửa dụng prototype để tính toán , đã sửa biến cho phù hợp 
 def _compute_class_mean(GVM, model, task_classes):
     dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=GVM.args.transform_type,target_map_to_local=False,expand_times=1,)
     loader = DataLoader(dataset,batch_size=GVM.args.batch_size,shuffle=False,num_workers=GVM.args.workers,)
@@ -302,6 +307,8 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
               rs_loss = rs_loss_fn(features.float(), target) # tính rs loss
               loss = ce_loss + lambda_rs * rs_loss # tính loss
         else:
+            # lấy inc loss để tính thêm ( ce_loss là loss gốc của splitlora ở đây t muốn thêm 1 hàm tính loss của risat vào nữa để cải tiến nếu bây giờ thay ce loss đi thì phải thay hàm 
+            # tính toán của nó . Có thể thử thay thế ce_loss) 
             loss_inc = _inc_loss(GVM, features, features_old)
             loss = ce_loss + loss_inc
 
@@ -347,6 +354,7 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
 
     model: VisionTransformer = set_model_mode(GVM, model, training=True, training_string=GVM.cache_dict['training_string'],taskid=taskid)
     model = modify_head(GVM, model, training=True, task_classes=task_classes)
+    # đây là tạo đối tượng class ở dòng 209 
     if taskid > 0 and getattr(GVM, "old_ae", None) is None:
         GVM.old_ae = AutoencoderSigmoid(input_dims=model.num_features,code_dims=384,).to(next(model.parameters()).device)
     dataset = define_dataset(GVM, task_classes,training=True,transform_type=args.transform_type,target_map_to_local=args.seperate_head,expand_times=args.expand_times,)
@@ -605,8 +613,8 @@ if __name__ == "__main__":
         GVM.update_label_maps(taskid, current_task_classes)
         GVM.cache_dict['training_string'] = args.training_string
         model = train_one_task(GVM, taskid, current_task_classes, model,args)
-        _compute_class_mean(GVM, model, current_task_classes)
-        GVM.old_model = deepcopy(model).eval()
+        _compute_class_mean(GVM, model, current_task_classes) # lưu prototype cuối mỗi task
+        GVM.old_model = deepcopy(model).eval() 
         GVM.old_model.requires_grad_(False)
         evaluate_tasks_sofar(GVM, taskid, model)
         task_ending_info(GVM)
