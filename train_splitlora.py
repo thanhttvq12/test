@@ -158,7 +158,31 @@ def set_model_mode(GVM: GlobalVarsManager, model: VisionTransformer, training: b
         model.cuda()
 
     return model
+def extract_features(GVM, model, loader):
+        model = model.eval()
+        embedding_list = []
+        label_list = []
+        with torch.no_grad():
+            for i, batch in enumerate(trainloader):
+                (_, data, label) = batch
+                data = data.cuda()
+                label = label.cuda()
+                embedding = model.extract_vector(data)
+                embedding_list.append(embedding.cpu())
+                label_list.append(label.cpu())
 
+        embedding_list = torch.cat(embedding_list, dim=0)
+        label_list = torch.cat(label_list, dim=0)
+        return embedding_list, label_list
+ def displacement(GVM, Y1, Y2, embedding_old, sigma):
+        DY = Y2 - Y1
+        distance = np.sum((np.tile(Y1[None, :, :], [embedding_old.shape[0], 1, 1]) - np.tile(
+            embedding_old[:, None, :], [1, Y1.shape[0], 1])) ** 2, axis=2)
+        W = np.exp(-distance / (2 * sigma ** 2)) + 1e-5
+        W_norm = W / np.tile(np.sum(W, axis=1)[:, None], [1, W.shape[1]])
+        displacement = np.sum(np.tile(W_norm[:, :, None], [
+            1, 1, DY.shape[1]]) * np.tile(DY[None, :, :], [W.shape[0], 1, 1]), axis=1)
+        return displacement
 
 def set_learning_rates(GVM: GlobalVarsManager, model: VisionTransformer, base_lr: float, lr_scale: float, lr_scale_patterns: str) -> list[dict[str: Tensor | float]]:
     param_lr_groups = [{'params': [], 'lr': base_lr},
@@ -357,6 +381,7 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
     # đây là tạo đối tượng class ở dòng 209 
     if taskid > 0 and getattr(GVM, "old_ae", None) is None:
         GVM.old_ae = AutoencoderSigmoid(input_dims=model.num_features,code_dims=384,).to(next(model.parameters()).device)
+    
     dataset = define_dataset(GVM, task_classes,training=True,transform_type=args.transform_type,target_map_to_local=args.seperate_head,expand_times=args.expand_times,)
     dataloader = DataLoader(dataset,batch_size=args.batch_size,shuffle=True,num_workers=args.workers,drop_last=args.prob_cutmixup > 0,)
     criterion = nn.CrossEntropyLoss().cuda()
@@ -365,7 +390,9 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
         param_groups = [{"params": [p for p in model.parameters() if p.requires_grad],"lr": args.lr,}]
     else:
         param_groups = set_learning_rates(GVM, model, args.lr, args.lr_scale, args.lr_scale_patterns)
-
+    if taskid > 0:
+        model._network.to(GVM._device)
+        train_embeddings_old, _ = self.extract_features(GVM, model, None)
     if taskid > 0:
         param_groups.append({"params": GVM.old_ae.parameters(),"lr": args.lr,"weight_decay": args.weight_decay,})
     GVM.cache_dict['update_proj_dict'] = {}
@@ -374,7 +401,12 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
     scheduler, num_epochs = create_scheduler_v2(optimizer, sched=args.lr_sch, num_epochs=args.epochs, decay_epochs=args.decay_epochs, decay_milestones=args.decay_milestones,
                                                 decay_rate=args.decay_rate, min_lr=args.min_lr, warmup_epochs=args.warmup_epochs, warmup_lr=args.min_lr)
     assert num_epochs == args.epochs
-
+    if self._cur_task >0:
+            train_embeddings_new, _ = self.extract_features(GVM, model , None)
+            old_class_mean = self._class_means[:self._known_classes]
+            gap = self.displacement(train_embeddings_old, train_embeddings_new, old_class_mean, 4.0)
+            old_class_mean +=gap
+            GVM._class_means[:self._known_classes] = old_class_mean
     all_param = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     rate = {
