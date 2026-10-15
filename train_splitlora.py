@@ -6,6 +6,7 @@ from time import time as ttime
 import argparse
 import random
 from collections import OrderedDict
+from argparse import Namespace
 import tqdm
 from typing import Any, Literal
 from copy import deepcopy
@@ -617,15 +618,12 @@ if __name__ == "__main__":
             model: VisionTransformer = timm.create_model(args.model, pretrained=True, pretrained_strict=False, **_head_dim_arg_dict,
                                                          other_args_dict=_other_args_dict)
             GVM.cache_dict['pretrained_cfg'] = deepcopy(model.pretrained_cfg)
-            model = timm.create_model(...)
             apply_lora(Namespace(encoder="both",params=["k", "v"],r=args.rank,alpha=args.alpha,task_id=0,num_tasks=args.num_tasks,),model,)
         model.num_tasks = args.num_tasks
-        from argparse import Namespace
         param = ['k','v']
 
         r=  args.rank
         alpha = args.alpha
-        apply_lora(Namespace(encoder='both', params=param, r=r, alpha=alpha, task_id=taskid, num_tasks=args.num_tasks), model) 
         args.training_string = ['lora','head']
         if args.consecutive_training and taskid > 0:
             pass
