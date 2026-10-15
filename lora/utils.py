@@ -145,12 +145,12 @@ class LoRALayer(torch.nn.Module):
     def update_grad_before_train(self, task_id):
 
         with torch.no_grad():
-            if self.task_id == 0:
+            if task_id == 0:
                 return 
             A = self.lora_A[0].weight
             B = self.lora_B[0].weight
             basis = self.feature_list.to(device=A.device, dtype=A.dtype)
-            random_coeffs = torch.randn(self.feature_list.shape[1],self.rank).to(self.lora_A[task_id].weight.device)
+             coeffs = torch.randn(basis.shape[1], self.rank,device=A.device, dtype=A.dtype,)
             new_A = (basis @ coeffs).T
             new_A = (new_A / new_A.norm().clamp_min(1e-12)* A.norm() / (task_id + 1))
             self.old_weight.add_(B @ A)
