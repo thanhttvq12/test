@@ -136,8 +136,8 @@ class LoRALayer(torch.nn.Module):
         self.n_cur_matrix = 0
         
     def update(self, task_id):
-        lora_A, lora_B = self.lora_A[self.task_id].weight, self.lora_B[self.task_id].weight
-
+        lora_A, lora_B = self.lora_A[self.task_id].weight, 
+        self.lora_B[self.task_id].weight
         self.old_weight += lora_B @ lora_A
         nn.init.kaiming_uniform_(self.lora_A[task_id].weight, a=math.sqrt(5))
         nn.init.zeros_(self.lora_B[task_id].weight)
@@ -146,11 +146,15 @@ class LoRALayer(torch.nn.Module):
 
         with torch.no_grad():
             if self.task_id == 0:
-                random_coeffs = torch.randn(self.feature_list.shape[1],self.rank).to(self.lora_A[task_id].weight.device)
-                initialized_matrix = self.feature_list @ random_coeffs
-                initialized_matrix = initialized_matrix / initialized_matrix.norm() * self.lora_A[task_id].weight.data.norm() * (1/(self.task_id+1))
-                self.lora_A[task_id].weight.data.copy_(initialized_matrix.T)                
-
+                return 
+            A = self.lora_A[0].weight
+            B = self.lora_B[0].weight
+            self.old_weight.add_(B @ A)
+            random_coeffs = torch.randn(self.feature_list.shape[1],self.rank).to(self.lora_A[task_id].weight.device)
+            initialized_matrix = self.feature_list @ random_coeffs
+            initialized_matrix = initialized_matrix / initialized_matrix.norm() * self.lora_A[task_id].weight.data.norm() * (1/(self.task_id+1))
+            self.lora_A[task_id].weight.data.copy_(initialized_matrix.T)                
+            B.zero_()
     def update_grad_after_train(self, task_id):
         with torch.no_grad():
             activation = self.cur_matrix
