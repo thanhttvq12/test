@@ -57,10 +57,6 @@ class GlobalVarsManager:
         self.cache_dict = {}
         self.param_dict = {}
         self.label_map_g2l = {}
-    def update_label_maps(self, taskid, task_classes):
-        mapping = misc.make_label_maps(taskid, task_classes)
-        self.label_map_g2l.update(mapping)
-        return mapping
     def _label_maps(self, taskid: int, task_classes: list[int]) -> tuple[dict[int, int], dict[str, int]]:
         _g2l_map = misc.make_label_maps(taskid, task_classes)
         if not all([_k not in self.label_map_g2l.keys() for _k in _g2l_map.keys()]):
@@ -631,7 +627,7 @@ if __name__ == "__main__":
         args.training_string = ['lora','head']
         if args.consecutive_training and taskid > 0:
             pass
-        GVM.update_label_maps(taskid, current_task_classes)
+        GVM._label_maps(taskid, current_task_classes)
         GVM.cache_dict['training_string'] = args.training_string
         model = train_one_task(GVM, taskid, current_task_classes, model,args)
         _compute_class_mean(GVM, model, current_task_classes) # lưu prototype cuối mỗi task
