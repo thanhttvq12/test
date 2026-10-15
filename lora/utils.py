@@ -139,17 +139,13 @@ class LoRALayer(torch.nn.Module):
         lora_A, lora_B = self.lora_A[self.task_id].weight, self.lora_B[self.task_id].weight
 
         self.old_weight += lora_B @ lora_A
-        self.lora_A.append(nn.Linear(self.in_dim, self.rank, bias=False))
         nn.init.kaiming_uniform_(self.lora_A[task_id].weight, a=math.sqrt(5))
-        self.lora_B.append(nn.Linear(self.rank, self.out_dim, bias=False))
         nn.init.zeros_(self.lora_B[task_id].weight)
         self.task_id = task_id
     def update_grad_before_train(self, task_id):
 
         with torch.no_grad():
             if self.task_id == 0:
-                return 
-            else:
                 random_coeffs = torch.randn(self.feature_list.shape[1],self.rank).to(self.lora_A[task_id].weight.device)
                 initialized_matrix = self.feature_list @ random_coeffs
                 initialized_matrix = initialized_matrix / initialized_matrix.norm() * self.lora_A[task_id].weight.data.norm() * (1/(self.task_id+1))
@@ -200,7 +196,7 @@ class QkvWithLoRA(torch.nn.Module):
         self.lora_k.update(task_id)
         self.lora_v.update(task_id)
     def update_grad(self, task_id, many):
-        if taskid == 0:
+        if task_id == 0:
             self.lora_k.update_grad_before_train(task_id)
             self.lora_v.update_grad_before_train(task_id)
         if 'after' in many:
