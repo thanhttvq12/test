@@ -138,11 +138,6 @@ def set_model_mode(GVM: GlobalVarsManager, model: VisionTransformer, training: b
         if training:
              if 'head' in name or 'lora_A' in name or 'lora_B' in name:
                 p.requires_grad_(True) 
-            if 'lora_B' in name:
-                id = name.split('lora_B.')[1]
-                if str(taskid) in id:
-                    p.requires_grad_(True)
-
     params_requires_grad = [n for n, p in model.named_parameters() if p.requires_grad]
     # print(f"Trainable params: {params_requires_grad}")
     model.eval()
