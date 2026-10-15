@@ -158,23 +158,7 @@ def set_model_mode(GVM: GlobalVarsManager, model: VisionTransformer, training: b
         model.cuda()
 
     return model
-def extract_features(GVM, model, loader):
-        model = model.eval()
-        embedding_list = []
-        label_list = []
-        with torch.no_grad():
-            for i, batch in enumerate(trainloader):
-                (_, data, label) = batch
-                data = data.cuda()
-                label = label.cuda()
-                embedding = model.extract_vector(data)
-                embedding_list.append(embedding.cpu())
-                label_list.append(label.cpu())
-
-        embedding_list = torch.cat(embedding_list, dim=0)
-        label_list = torch.cat(label_list, dim=0)
-        return embedding_list, label_list
- def displacement(GVM, Y1, Y2, embedding_old, sigma):
+def displacement(GVM, Y1, Y2, embedding_old, sigma):
         DY = Y2 - Y1
         distance = np.sum((np.tile(Y1[None, :, :], [embedding_old.shape[0], 1, 1]) - np.tile(
             embedding_old[:, None, :], [1, Y1.shape[0], 1])) ** 2, axis=2)
@@ -293,9 +277,13 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
     temperature: float = args.temperature
     use_amp: bool = args.use_amp
     assert temperature > 0.
-
-    _use_cutmixup = args.prob_cutmixup > 0
-    rs_loss_fn = RS_Loss(lamda=1.5, margin=0.4) if taskid == 0 else None; #tạo một thục thể class rs loss
+    if taskid > 0:
+        feature_dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=args.transform_type,target_map_to_local=False,expand_times=1,)
+        feature_loader = DataLoader(feature_dataset,batch_size=args.batch_size,shuffle=False,num_workers=args.workers,)
+        features_before, labels_before = _extract_vectors(model, feature_loader)
+        _use_cutmixup = args.prob_cutmixup > 0
+        rs_loss_fn = RS_Loss(lamda=1.5, margin=0.4) if taskid == 0 else None;
+    set_model_mode(GVM, model, training=True,training_string=GVM.cache_dict["training_string"],taskid=taskid,)
     if _use_cutmixup:
         cutmixup_fn = Mixup(mixup_alpha=1., cutmix_alpha=1., prob=args.prob_cutmixup, switch_prob=0.5, mode='batch', num_classes=len(GVM.cl_mngr.current_task_classes))
 
