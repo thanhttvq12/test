@@ -196,10 +196,10 @@ class QkvWithLoRA(torch.nn.Module):
         self.lora_k.update(task_id)
         self.lora_v.update(task_id)
     def update_grad(self, task_id, many):
-        if task_id == 0:
+        if many == 'before':
             self.lora_k.update_grad_before_train(task_id)
             self.lora_v.update_grad_before_train(task_id)
-        if 'after' in many:
+        elif many == 'after':
             self.lora_k.update_grad_after_train(task_id)
             self.lora_v.update_grad_after_train(task_id)
     def forward(self, x, get_cur_feat=False):
