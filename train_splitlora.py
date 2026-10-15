@@ -80,7 +80,7 @@ def get_args():
     parser.add_argument('--logit_scale_trainable', type=misc.str2bool, default=False)
     parser.add_argument('--seperate_head', type=misc.str2bool, default=True)
     parser.add_argument('--cosface_scale', type=float, default=20.0)
-    parser.add_argument('--cosface_margin', type=float, default=0.1)
+    parser.add_argument('--cosface_margin', type=float, default=0.2)
     parser.add_argument('--beta', type=float, default=3.0)
     parser.add_argument('--gamma', type=float, default=1.5)
     parser.add_argument('--ln_loss_lam', type=float, default=1.)
@@ -333,12 +333,12 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
         if taskid == 0:
               lambda_rs = 0.5 * min(1.0, (curr_epoch - 1) / 10) #tính lambda
               rs_loss = rs_loss_fn(features.float(), target) # tính rs loss
-              loss = ce_loss + lambda_rs * rs_loss # tính loss
+              loss = ce_loss # tính loss
         else:
             # lấy inc loss để tính thêm ( ce_loss là loss gốc của splitlora ở đây t muốn thêm 1 hàm tính loss của risat vào nữa để cải tiến nếu bây giờ thay ce loss đi thì phải thay hàm 
             # tính toán của nó . Có thể thử thay thế ce_loss) 
             loss_inc = _inc_loss(GVM, features, features_old)
-            loss = ce_loss + loss_inc
+            loss = ce_loss 
 
         optimizer.zero_grad()
         amp_scalar.scale(loss).backward()
@@ -658,5 +658,3 @@ if __name__ == "__main__":
         GVM.old_model.requires_grad_(False)
         evaluate_tasks_sofar(GVM, taskid, model)
         task_ending_info(GVM)
-
-
