@@ -62,7 +62,7 @@ class GlobalVarsManager:
         _g2l_map = misc.make_label_maps(taskid, task_classes)
         if not all([_k not in self.label_map_g2l.keys() for _k in _g2l_map.keys()]):
             print("The global_to_local label map has been fully loaded, which is not expected.")
-        self.label_map_g2l.(_g2l_map)
+        self.label_map_g2l.update(_g2l_map)
         return _g2l_map
 
 
@@ -324,7 +324,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
         optimizer.zero_grad()
         amp_scalar.scale(loss).backward()
         amp_scalar.step(optimizer)
-        amp_scalar.()
+        amp_scalar.update()
 
         acc_top1 = misc.calc_accuracy(logits, target, topk=(1,))[0]
         batch_time = ttime() - _btimer
