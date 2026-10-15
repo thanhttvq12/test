@@ -336,7 +336,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
         _btimer = ttime()
 
         wandb.log({f"train_loss/loss_{taskid}": loss.item(), f"train_acc/acc_top1_{taskid}": acc_top1})
-    _epoch_scalar_str = scalar_meter.format_outout(scalar_meter._epoch_average_value())
+    _epoch_scalar_str = scalar_meter.format_outout(scalar_meter.update_epoch_average_value())
     return _epoch_scalar_str
 
 
