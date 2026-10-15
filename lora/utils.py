@@ -129,7 +129,7 @@ class LoRALayer(torch.nn.Module):
         nn.init.kaiming_uniform_(self.lora_A[0].weight, a=math.sqrt(5))
         nn.init.zeros_(self.lora_B[0].weight)
         self.task_id = 0
-        self.old_weight = 0.
+        self.register_buffer( "old_weight",torch.zeros(out_dim, in_dim),)
         self.pos = pos
         self.layer = layer
         self.cur_matrix = torch.zeros(in_dim ,in_dim)
@@ -149,11 +149,12 @@ class LoRALayer(torch.nn.Module):
                 return 
             A = self.lora_A[0].weight
             B = self.lora_B[0].weight
-            self.old_weight.add_(B @ A)
+            basis = self.feature_list.to(device=A.device, dtype=A.dtype)
             random_coeffs = torch.randn(self.feature_list.shape[1],self.rank).to(self.lora_A[task_id].weight.device)
-            initialized_matrix = self.feature_list @ random_coeffs
-            initialized_matrix = initialized_matrix / initialized_matrix.norm() * self.lora_A[task_id].weight.data.norm() * (1/(self.task_id+1))
-            self.lora_A[task_id].weight.data.copy_(initialized_matrix.T)                
+            new_A = (basis @ coeffs).T
+            new_A = (new_A / new_A.norm().clamp_min(1e-12)* A.norm() / (task_id + 1))
+            self.old_weight.add_(B @ A)
+            A.copy_(new_A)
             B.zero_()
     def update_grad_after_train(self, task_id):
         with torch.no_grad():
@@ -163,7 +164,7 @@ class LoRALayer(torch.nn.Module):
             sval_ratio = (S)/sval_total
             k = torch.arange(1, self.in_dim+1).to(self.lora_A[0].weight.device)-1
             k = (self.in_dim-k.float()) / self.in_dim
-            result = (self.task_id+1)*(1-torch.cumsum(sval_ratio,dim=-1)) - self.alpha*k
+            result = ((task_id + 1) * (1 - torch.cumsum(sval_ratio, dim=-1))- self.alpha * k)
             r = torch.argmin(result)
             self.feature_list = U[:,max(r,1)+1:]
             Uf=torch.matmul(self.feature_list,self.feature_list.T)
@@ -178,7 +179,8 @@ class LoRALayer(torch.nn.Module):
             self.cur_matrix = (self.cur_matrix*self.n_cur_matrix + torch.bmm(x.detach().permute(0, 2, 1), x.detach()).sum(dim=0))/(self.n_cur_matrix + x.shape[0]*x.shape[1])
             self.n_cur_matrix += x.shape[0]*x.shape[1]
 
-        lora_A, lora_B = self.lora_A[self.task_id].weight, self.lora_B[self.task_id].weight
+        lora_A = self.lora_A[0].weight
+        lora_B = self.lora_B[0].weight
         result = F.linear(x, self.old_weight+lora_B @ lora_A)
 
         return result
