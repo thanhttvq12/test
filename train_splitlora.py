@@ -136,7 +136,7 @@ def set_model_mode(GVM: GlobalVarsManager, model: VisionTransformer, training: b
     for name, p in model.named_parameters():
         p.requires_grad_(False)
         if training:
-             if 'head' in name or 'lora_A' in name or 'lora_B' in name:
+             if 'head' in name or 'lora_B' in name:
                 p.requires_grad_(True) 
     params_requires_grad = [n for n, p in model.named_parameters() if p.requires_grad]
     # print(f"Trainable params: {params_requires_grad}")
@@ -386,6 +386,7 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
         "orig_params": all_param,}
     print(f"Trainable params: {rate['trainable_params']}, Original params: {rate['orig_params']}, Trainable ratio: {rate['trainable_params'] / rate['orig_params']}")
     if taskid > 0:
+          update_grad(taskid, model, 'before')
           feature_dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=args.transform_type,target_map_to_local=False,expand_times=1,)
           feature_loader = DataLoader(feature_dataset,batch_size=args.batch_size,shuffle=False,num_workers=args.workers,)
           features_before, labels_before = _extract_vectors(model, feature_loader)
@@ -396,7 +397,11 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
             _epoch_scalar_str = train_one_epoch(GVM, epoch, dataloader, model, criterion, optimizer,taskid)
             print(f"Task [{taskid+1:>{len(_ntstr)}}/{_ntstr}] Epoch [{epoch:>{len(_nestr:=str(args.epochs))}}/{_nestr}]:: {_epoch_scalar_str}")
         scheduler.step(epoch)
-    update_grad(taskid, model, 'before')
+    with torch.no_grad():
+        for images, _ in dataloader:
+             inputs = images.cuda(non_blocking=True)
+             model(inputs, get_cur_feat=True)
+             update_grad(taskid, model, 'after')
     cache_state(GVM, taskid, model)
     if taskid > 0:
          features_after, labels_after = _extract_vectors(model, feature_loader)
@@ -415,7 +420,6 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
 
 def evaluate_one_task(GVM: GlobalVarsManager, train_taskid: int, eval_taskid: int, eval_task_classes: list[int], model: VisionTransformer) -> OrderedDict[str, float]:
     use_amp: bool = GVM.args.use_amp
-    update_grad(taskid, model, 'before')
     _ttimer = ttime()
 
     dataset = define_dataset(GVM, eval_task_classes, training=False, transform_type=GVM.args.transform_type, target_map_to_local=False)
