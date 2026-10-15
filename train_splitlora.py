@@ -396,7 +396,7 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
             _epoch_scalar_str = train_one_epoch(GVM, epoch, dataloader, model, criterion, optimizer,taskid)
             print(f"Task [{taskid+1:>{len(_ntstr)}}/{_ntstr}] Epoch [{epoch:>{len(_nestr:=str(args.epochs))}}/{_nestr}]:: {_epoch_scalar_str}")
         scheduler.step(epoch)
-
+    update_grad(taskid, model, 'before')
     cache_state(GVM, taskid, model)
     if taskid > 0:
          features_after, labels_after = _extract_vectors(model, feature_loader)
@@ -415,6 +415,7 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
 
 def evaluate_one_task(GVM: GlobalVarsManager, train_taskid: int, eval_taskid: int, eval_task_classes: list[int], model: VisionTransformer) -> OrderedDict[str, float]:
     use_amp: bool = GVM.args.use_amp
+    update_grad(taskid, model, 'before')
     _ttimer = ttime()
 
     dataset = define_dataset(GVM, eval_task_classes, training=False, transform_type=GVM.args.transform_type, target_map_to_local=False)
