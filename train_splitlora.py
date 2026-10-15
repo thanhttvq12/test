@@ -617,6 +617,9 @@ if __name__ == "__main__":
             model: VisionTransformer = timm.create_model(args.model, pretrained=True, pretrained_strict=False, **_head_dim_arg_dict,
                                                          other_args_dict=_other_args_dict)
             GVM.cache_dict['pretrained_cfg'] = deepcopy(model.pretrained_cfg)
+        if taskid == 0:
+            model = timm.create_model(...)
+            apply_lora(Namespace(encoder="both",params=["k", "v"],r=args.rank,alpha=args.alpha,task_id=0,num_tasks=args.num_tasks,),model,)
         model.num_tasks = args.num_tasks
         from argparse import Namespace
         param = ['k','v']
