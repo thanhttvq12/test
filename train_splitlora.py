@@ -136,7 +136,7 @@ def set_model_mode(GVM: GlobalVarsManager, model: VisionTransformer, training: b
     for name, p in model.named_parameters():
         p.requires_grad_(False)
         if training:
-            if'head' in name:
+             if 'head' in name or 'lora_A' in name or 'lora_B' in name:
                 p.requires_grad_(True) 
             if 'lora_B' in name:
                 id = name.split('lora_B.')[1]
@@ -395,7 +395,6 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
           feature_loader = DataLoader(feature_dataset,batch_size=args.batch_size,shuffle=False,num_workers=args.workers,)
           features_before, labels_before = _extract_vectors(model, feature_loader)
           set_model_mode(GVM, model,training=True,training_string=GVM.cache_dict["training_string"],taskid=taskid,)
-    update_grad(taskid, model, 'before')
     torch.cuda.empty_cache()
     for epoch in range(0, args.epochs + 1):
         if epoch > 0:
@@ -413,10 +412,6 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
         for i_batch, (images, target) in enumerate(dataloader, 1):
             # if i_batch %100 == 0:
             inputs: Tensor = images.cuda(non_blocking=True)
-            model(inputs, get_cur_feat=True)
-
-    update_grad(taskid, model, 'after')
-
     model.remove_text_features()
     print(f"Task [{taskid+1:>{len(_ntstr)}}/{_ntstr}]:: Training time = {misc.format_duration(ttime() - _ttimer)}")
 
