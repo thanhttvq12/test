@@ -277,12 +277,9 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
     temperature: float = args.temperature
     use_amp: bool = args.use_amp
     assert temperature > 0.
-    if taskid > 0:
-        feature_dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=args.transform_type,target_map_to_local=False,expand_times=1,)
-        feature_loader = DataLoader(feature_dataset,batch_size=args.batch_size,shuffle=False,num_workers=args.workers,)
-        features_before, labels_before = _extract_vectors(model, feature_loader)
-        _use_cutmixup = args.prob_cutmixup > 0
-        rs_loss_fn = RS_Loss(lamda=1.5, margin=0.4) if taskid == 0 else None;
+   
+    _use_cutmixup = args.prob_cutmixup > 0
+    rs_loss_fn = RS_Loss(lamda=1.5, margin=0.4) if taskid == 0 else None;
     set_model_mode(GVM, model, training=True,training_string=GVM.cache_dict["training_string"],taskid=taskid,)
     if _use_cutmixup:
         cutmixup_fn = Mixup(mixup_alpha=1., cutmix_alpha=1., prob=args.prob_cutmixup, switch_prob=0.5, mode='batch', num_classes=len(GVM.cl_mngr.current_task_classes))
@@ -378,9 +375,7 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
         param_groups = [{"params": [p for p in model.parameters() if p.requires_grad],"lr": args.lr,}]
     else:
         param_groups = set_learning_rates(GVM, model, args.lr, args.lr_scale, args.lr_scale_patterns)
-    if taskid > 0:
-        model._network.to(GVM._device)
-        train_embeddings_old, _ = self.extract_features(GVM, model, None)
+  
     if taskid > 0:
         param_groups.append({"params": GVM.old_ae.parameters(),"lr": args.lr,"weight_decay": args.weight_decay,})
     GVM.cache_dict['update_proj_dict'] = {}
@@ -389,12 +384,6 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
     scheduler, num_epochs = create_scheduler_v2(optimizer, sched=args.lr_sch, num_epochs=args.epochs, decay_epochs=args.decay_epochs, decay_milestones=args.decay_milestones,
                                                 decay_rate=args.decay_rate, min_lr=args.min_lr, warmup_epochs=args.warmup_epochs, warmup_lr=args.min_lr)
     assert num_epochs == args.epochs
-    if self._cur_task >0:
-            train_embeddings_new, _ = self.extract_features(GVM, model , None)
-            old_class_mean = self._class_means[:self._known_classes]
-            gap = self.displacement(train_embeddings_old, train_embeddings_new, old_class_mean, 4.0)
-            old_class_mean +=gap
-            GVM._class_means[:self._known_classes] = old_class_mean
     all_param = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     rate = {
@@ -410,7 +399,11 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
         scheduler.step(epoch)
 
     cache_state(GVM, taskid, model)
-
+    if taskid > 0:
+         features_after, labels_after = _extract_vectors(model, feature_loader)
+         assert np.array_equal(labels_before, labels_after)
+         gap = displacement(GVM,features_before,features_after,GVM._class_means,sigma=4.0,)
+         GVM._class_means += gap.astype(GVM._class_means.dtype)
     with torch.no_grad():
         for i_batch, (images, target) in enumerate(dataloader, 1):
             # if i_batch %100 == 0:
