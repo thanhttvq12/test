@@ -80,7 +80,7 @@ def get_args():
     parser.add_argument('--logit_scale_trainable', type=misc.str2bool, default=False)
     parser.add_argument('--seperate_head', type=misc.str2bool, default=True)
     parser.add_argument('--cosface_scale', type=float, default=20.0)
-    parser.add_argument('--cosface_margin', type=float, default=0.2)
+    parser.add_argument('--cosface_margin', type=float, default=0.1)
     parser.add_argument('--beta', type=float, default=3.0)
     parser.add_argument('--gamma', type=float, default=1.5)
     parser.add_argument('--ln_loss_lam', type=float, default=1.)
