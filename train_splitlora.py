@@ -610,14 +610,13 @@ if __name__ == "__main__":
         print(f"{'#'*90} Task: [{taskid+1}/{GVM.cl_mngr.num_tasks}] {'#'*90}")
         print(f"Current classes ({len(current_task_classes)}): {current_task_classes}")
 
-        if not args.consecutive_training or taskid == 0:
+        if  taskid == 0:
             _other_args_dict = misc.get_specific_args_dict(args, 'logit_')
             _head_dim_arg_dict = get_head_dim_arg_dict(GVM, args)
 
             model: VisionTransformer = timm.create_model(args.model, pretrained=True, pretrained_strict=False, **_head_dim_arg_dict,
                                                          other_args_dict=_other_args_dict)
             GVM.cache_dict['pretrained_cfg'] = deepcopy(model.pretrained_cfg)
-        if taskid == 0:
             model = timm.create_model(...)
             apply_lora(Namespace(encoder="both",params=["k", "v"],r=args.rank,alpha=args.alpha,task_id=0,num_tasks=args.num_tasks,),model,)
         model.num_tasks = args.num_tasks
