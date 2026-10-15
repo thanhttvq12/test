@@ -58,11 +58,11 @@ class GlobalVarsManager:
         self.param_dict = {}
         self.label_map_g2l = {}
 
-    def update_label_maps(self, taskid: int, task_classes: list[int]) -> tuple[dict[int, int], dict[str, int]]:
+    def _label_maps(self, taskid: int, task_classes: list[int]) -> tuple[dict[int, int], dict[str, int]]:
         _g2l_map = misc.make_label_maps(taskid, task_classes)
         if not all([_k not in self.label_map_g2l.keys() for _k in _g2l_map.keys()]):
             print("The global_to_local label map has been fully loaded, which is not expected.")
-        self.label_map_g2l.update(_g2l_map)
+        self.label_map_g2l.(_g2l_map)
         return _g2l_map
 
 
@@ -324,7 +324,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
         optimizer.zero_grad()
         amp_scalar.scale(loss).backward()
         amp_scalar.step(optimizer)
-        amp_scalar.update()
+        amp_scalar.()
 
         acc_top1 = misc.calc_accuracy(logits, target, topk=(1,))[0]
         batch_time = ttime() - _btimer
@@ -333,7 +333,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
         _btimer = ttime()
 
         wandb.log({f"train_loss/loss_{taskid}": loss.item(), f"train_acc/acc_top1_{taskid}": acc_top1})
-    _epoch_scalar_str = scalar_meter.format_outout(scalar_meter.update_epoch_average_value())
+    _epoch_scalar_str = scalar_meter.format_outout(scalar_meter._epoch_average_value())
     return _epoch_scalar_str
 
 
@@ -378,7 +378,7 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
   
     if taskid > 0:
         param_groups.append({"params": GVM.old_ae.parameters(),"lr": args.lr,"weight_decay": args.weight_decay,})
-    GVM.cache_dict['update_proj_dict'] = {}
+    GVM.cache_dict['_proj_dict'] = {}
     optimizer = create_optimizer_v2(param_groups, opt='adamW', lr=args.lr, weight_decay=args.weight_decay, foreach=True)
 
     scheduler, num_epochs = create_scheduler_v2(optimizer, sched=args.lr_sch, num_epochs=args.epochs, decay_epochs=args.decay_epochs, decay_milestones=args.decay_milestones,
@@ -390,6 +390,11 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
         "trainable_params": trainable_params,
         "orig_params": all_param,}
     print(f"Trainable params: {rate['trainable_params']}, Original params: {rate['orig_params']}, Trainable ratio: {rate['trainable_params'] / rate['orig_params']}")
+    if taskid > 0:
+          feature_dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=args.transform_type,target_map_to_local=False,expand_times=1,)
+          feature_loader = DataLoader(feature_dataset,batch_size=args.batch_size,shuffle=False,num_workers=args.workers,)
+          features_before, labels_before = _extract_vectors(model, feature_loader)
+          set_model_mode(GVM, model,training=True,training_string=GVM.cache_dict["training_string"],taskid=taskid,)
     update_grad(taskid, model, 'before')
     torch.cuda.empty_cache()
     for epoch in range(0, args.epochs + 1):
