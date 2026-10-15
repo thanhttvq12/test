@@ -400,8 +400,8 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
     with torch.no_grad():
         for images, _ in dataloader:
              inputs = images.cuda(non_blocking=True)
-             model(inputs, get_cur_feat=True)
-             update_grad(taskid, model, 'after')
+             model(inputs, get_cur_feat=True)        
+    update_grad(taskid, model, 'after')
     cache_state(GVM, taskid, model)
     if taskid > 0:
          features_after, labels_after = _extract_vectors(model, feature_loader)
