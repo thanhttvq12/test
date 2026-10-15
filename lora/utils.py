@@ -150,7 +150,7 @@ class LoRALayer(torch.nn.Module):
             A = self.lora_A[0].weight
             B = self.lora_B[0].weight
             basis = self.feature_list.to(device=A.device, dtype=A.dtype)
-             coeffs = torch.randn(basis.shape[1], self.rank,device=A.device, dtype=A.dtype,)
+            coeffs = torch.randn(basis.shape[1], self.rank,device=A.device, dtype=A.dtype,)
             new_A = (basis @ coeffs).T
             new_A = (new_A / new_A.norm().clamp_min(1e-12)* A.norm() / (task_id + 1))
             self.old_weight.add_(B @ A)
