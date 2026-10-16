@@ -102,7 +102,7 @@ def get_args():
     parser.add_argument('--lr', '--learning_rate', type=float, default=0.001)
     parser.add_argument('--rank', type=int, default=8)
     parser.add_argument('--alpha', type=float, default=20)
-
+    parser.add_argument("--lambda_rel", type=float, default=1.0)
     parser.add_argument('--lr_scale', type=float, default=10.)
     parser.add_argument('--lr_scale_patterns', type=str, nargs='+')
     parser.add_argument('--optimizer', type=str, default='')
@@ -235,19 +235,24 @@ def _inc_loss(GVM, features, features_old):
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
         return  GVM.args.gamma * loss_orth
 # tính vecto ( phương thúc từ risat)
-def _extract_vectors(model, loader):
-        model.eval()
-        device = next(model.parameters()).device
-        vectors, targets = [], []
+def _inc_loss(GVM, features, features_old):
+    # Prototype và mạng cũ là các mốc cố định trong bước học.
+    with torch.no_grad():
+        protos = torch.as_tensor(
+            GVM._class_means,
+            dtype=torch.float32,
+            device=features.device,
+        )
+        protos = F.normalize(protos, dim=1)
+        old_norm = F.normalize(features_old.float(), dim=1)
+        similarity_old = old_norm @ protos.T
 
-        for images, labels in loader:
-             images = images.to(device, non_blocking=True)
-             features = model.encode_image(images, pre_logits=True)
+    new_norm = F.normalize(features.float(), dim=1)
+    similarity_new = new_norm @ protos.T
 
-             vectors.append(features.float().cpu().numpy())
-             targets.append(labels.cpu().numpy())
-
-        return np.concatenate(vectors), np.concatenate(targets)
+    return GVM.args.lambda_rel * F.mse_loss(
+        similarity_new, similarity_old
+    )
 # hàm tính prototype từ risat do splitlora do sửa dụng prototype để tính toán , đã sửa biến cho phù hợp 
 def _compute_class_mean(GVM, model, task_classes):
     dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=GVM.args.transform_type,target_map_to_local=False,expand_times=1,)
