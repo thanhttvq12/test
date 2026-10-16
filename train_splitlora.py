@@ -79,8 +79,6 @@ def get_args():
     parser.add_argument('--logit_scale', type=float, default=4.605170249938965, help='0 | 4.605170249938965')
     parser.add_argument('--logit_scale_trainable', type=misc.str2bool, default=False)
     parser.add_argument('--seperate_head', type=misc.str2bool, default=True)
-    parser.add_argument('--cosface_scale', type=float, default=20.0)
-    parser.add_argument('--cosface_margin', type=float, default=0.2)
     parser.add_argument('--beta', type=float, default=3.0)
     parser.add_argument('--gamma', type=float, default=1.5)
     parser.add_argument('--ln_loss_lam', type=float, default=1.)
@@ -179,30 +177,6 @@ def set_learning_rates(GVM: GlobalVarsManager, model: VisionTransformer, base_lr
     return param_lr_groups
 
 # thêm class RS_loss của risat
-def cosine_head_logits(model, features):
-    # Compute cosine similarities in FP32; the linear head bias is unused.
-    with torch.autocast(device_type=features.device.type, enabled=False):
-        return F.linear(
-            F.normalize(features.float(), dim=1),
-            F.normalize(model.head.weight.float(), dim=1),
-        )
-
-
-class CosFaceLoss(nn.Module):
-    def __init__(self, scale=20.0, margin=0.2):
-        super().__init__()
-        if scale <= 0 or not 0 <= margin < 1:
-            raise ValueError("CosFace requires scale > 0 and 0 <= margin < 1")
-        self.scale = scale
-        self.margin = margin
-
-    def forward(self, cosine, labels):
-        if labels.ndim != 1 or labels.dtype != torch.long:
-            raise ValueError("CosFace requires integer class labels, without Mixup/CutMix")
-        target_mask = F.one_hot(labels, num_classes=cosine.shape[1]).to(cosine.dtype)
-        return F.cross_entropy(self.scale * (cosine - self.margin * target_mask), labels)
-
-
 class RS_Loss(nn.Module):
     def __init__(self, lamda=1.5, margin=0.4):
         super(RS_Loss, self).__init__()
@@ -318,8 +292,8 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
             mix_lbl = target
 
         with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=use_amp):
-            features = model.encode_image(images, pre_logits=True)
-        logits = cosine_head_logits(model, features)
+            logits: Tensor = model(mix_img)
+        features = model.encode_image(images, pre_logits=True)
         if taskid > 0:
             with torch.no_grad():
                 features_old = GVM.old_model.encode_image(images, pre_logits=True)
@@ -329,7 +303,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
             else:
                 assert logits.shape[1] == len(GVM.cl_mngr.sofar_task_classes)
 
-        ce_loss = criterion(logits, target)  # CosFace applies its own scale and target margin.
+        ce_loss = criterion(logits / temperature, mix_lbl)
         if taskid == 0:
               lambda_rs = 0.5 * min(1.0, (curr_epoch - 1) / 10) #tính lambda
               rs_loss = rs_loss_fn(features.float(), target) # tính rs loss
@@ -388,10 +362,8 @@ def train_one_task(GVM: GlobalVarsManager, taskid: int, task_classes: list[int],
     
     dataset = define_dataset(GVM, task_classes,training=True,transform_type=args.transform_type,target_map_to_local=args.seperate_head,expand_times=args.expand_times,)
     dataloader = DataLoader(dataset,batch_size=args.batch_size,shuffle=True,num_workers=args.workers,drop_last=args.prob_cutmixup > 0,)
-    if args.prob_cutmixup > 0:
-        raise ValueError("This CosFace experiment requires --prob_cutmixup 0")
-    criterion = CosFaceLoss(args.cosface_scale, args.cosface_margin).cuda()
-    print(f"Classifier loss: CosFace | scale={args.cosface_scale} | margin={args.cosface_margin}")
+    criterion = nn.CrossEntropyLoss().cuda()
+    print(f"Classifier loss: CrossEntropy | temperature={args.temperature}")
 
     if args.lr_scale == 1:
         param_groups = [{"params": [p for p in model.parameters() if p.requires_grad],"lr": args.lr,}]
@@ -462,8 +434,7 @@ def evaluate_one_task(GVM: GlobalVarsManager, train_taskid: int, eval_taskid: in
         # import pdb;pdb.set_trace()
         with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=use_amp):
             with torch.no_grad():
-                features = model.encode_image(images, pre_logits=True)
-                logits = cosine_head_logits(model, features)  # No target margin at inference.
+                logits: Tensor = model(images)
 
         assert logits.ndim == 2
         assert logits.shape[1] == len(GVM.cl_mngr.sofar_task_classes), f"{logits.shape}, {len(GVM.cl_mngr.sofar_task_classes)}"
