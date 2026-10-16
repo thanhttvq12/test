@@ -128,6 +128,10 @@ class LoRALayer(torch.nn.Module):
 
         nn.init.kaiming_uniform_(self.lora_A[0].weight, a=math.sqrt(5))
         nn.init.zeros_(self.lora_B[0].weight)
+        # Reuse the initial norm, avoiding factorial shrinkage across tasks.
+        self.register_buffer(
+            "initial_A_norm", self.lora_A[0].weight.detach().norm().clone()
+        )
         self.task_id = 0
         self.register_buffer( "old_weight",torch.zeros(out_dim, in_dim),)
         self.pos = pos
@@ -152,7 +156,11 @@ class LoRALayer(torch.nn.Module):
             basis = self.feature_list.to(device=A.device, dtype=A.dtype)
             coeffs = torch.randn(basis.shape[1], self.rank,device=A.device, dtype=A.dtype,)
             new_A = (basis @ coeffs).T
-            new_A = (new_A / new_A.norm().clamp_min(1e-12)* A.norm() / (task_id + 1))
+            new_A = (
+                new_A / new_A.norm().clamp_min(1e-12)
+                * self.initial_A_norm.to(device=A.device, dtype=A.dtype)
+                / (task_id + 1)
+            )
             self.old_weight.add_(B @ A)
             A.copy_(new_A)
             B.zero_()
