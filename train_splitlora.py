@@ -243,19 +243,30 @@ def _inc_loss(GVM, features, features_old):
         similarity_new, similarity_old
     )
 # tính vecto ( phương thúc từ risat)
+@torch.no_grad()
 def _extract_vectors(model, loader):
-        model.eval()
-        device = next(model.parameters()).device
-        vectors, targets = [], []
+    was_training = model.training
+    model.eval()
+    device = next(model.parameters()).device
+    vectors, targets = [], []
 
+    try:
         for images, labels in loader:
-             images = images.to(device, non_blocking=True)
-             features = model.encode_image(images, pre_logits=True)
+            images = images.to(device, non_blocking=True)
+            features = model.encode_image(images, pre_logits=True)
 
-             vectors.append(features.float().cpu().numpy())
-             targets.append(labels.cpu().numpy())
+            vectors.append(features.detach().float().cpu().numpy())
+            targets.append(labels.detach().cpu().numpy())
+    finally:
+        model.train(was_training)
 
-        return np.concatenate(vectors), np.concatenate(targets)
+    if not vectors:
+        raise ValueError("Loader trích feature không có dữ liệu.")
+
+    return (
+        np.concatenate(vectors, axis=0),
+        np.concatenate(targets, axis=0),
+    )
 # hàm tính prototype từ risat do splitlora do sửa dụng prototype để tính toán , đã sửa biến cho phù hợp 
 def _compute_class_mean(GVM, model, task_classes):
     dataset = define_dataset(GVM, task_classes,training=True,use_eval_transform=True,transform_type=GVM.args.transform_type,target_map_to_local=False,expand_times=1,)
