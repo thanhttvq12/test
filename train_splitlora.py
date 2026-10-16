@@ -307,7 +307,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
         if taskid == 0:
               lambda_rs = 0.5 * min(1.0, (curr_epoch - 1) / 10) #tính lambda
               rs_loss = rs_loss_fn(features.float(), target) # tính rs loss
-              loss = ce_loss # tính loss
+              loss = ce_loss + rs_loss  # tính loss
         else:
             # lấy inc loss để tính thêm ( ce_loss là loss gốc của splitlora ở đây t muốn thêm 1 hàm tính loss của risat vào nữa để cải tiến nếu bây giờ thay ce loss đi thì phải thay hàm 
             # tính toán của nó . Có thể thử thay thế ce_loss) 
