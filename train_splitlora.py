@@ -475,6 +475,15 @@ def evaluate_one_task(GVM: GlobalVarsManager, train_taskid: int, eval_taskid: in
 
 def evaluate_tasks_sofar(GVM: GlobalVarsManager, train_taskid: int, model: VisionTransformer):
     model = modify_head(GVM, model, training=False)
+    original_head = model.head
+    if train_taskid > 0:
+    model.head = calibrate_head_with_prototypes(
+        GVM,
+        model,
+        steps=100,
+        lr=1e-3,
+        anchor_weight=0.1,
+    )
     torch.cuda.empty_cache()
     average_acc_meter = misc.ScalarMeter(acc_class_inc="samp_avg:>6.2%")
 
@@ -484,7 +493,7 @@ def evaluate_tasks_sofar(GVM: GlobalVarsManager, train_taskid: int, model: Visio
         GVM.acc_mat_dict[f'AccClassIncMat'][train_taskid, eval_taskid] = one_result_dict['acc_class_inc']
         average_acc_meter.add_step_value(**one_result_dict)
     model.remove_text_features()
-
+    model.head = original_head
     avg_result_dict = average_acc_meter.update_epoch_average_value()
     GVM.acc_mat_dict[f'AccClassIncList'][train_taskid] = avg_result_dict['acc_class_inc']
 
@@ -597,7 +606,71 @@ def modify_head(GVM: GlobalVarsManager, model: VisionTransformer, training: bool
                 model.head.bias.data = _hb
 
     return model
+def calibrate_head_with_prototypes(
+    GVM, model, steps=100, lr=1e-3, anchor_weight=0.1
+):
+    # model.head phải là head đã ghép của tất cả lớp đã học.
+    device = model.head.weight.device
+    temperature = float(GVM.args.temperature)
 
+    prototypes = torch.as_tensor(
+        GVM._class_means,
+        dtype=torch.float32,
+        device=device,
+    ).detach()
+
+    num_classes = model.head.out_features
+    assert prototypes.ndim == 2
+    assert prototypes.shape == (
+        num_classes, model.head.in_features
+    ), (prototypes.shape, model.head.weight.shape)
+    assert torch.isfinite(prototypes).all()
+
+    # _compute_class_mean lưu hàng theo global mapped label:
+    # prototype hàng c phải ứng với output c của head đã ghép.
+    labels = torch.arange(num_classes, device=device)
+
+    # Chỉ tối ưu bản sao classifier; không đi qua backbone/LoRA.
+    calibrated_head = deepcopy(model.head).float()
+    calibrated_head.requires_grad_(True)
+    calibrated_head.train()
+
+    initial_params = {
+        name: p.detach().clone()
+        for name, p in calibrated_head.named_parameters()
+    }
+
+    optimizer = torch.optim.AdamW(
+        calibrated_head.parameters(),
+        lr=lr,
+        weight_decay=0.0,
+    )
+
+    for step in range(steps):
+        logits = calibrated_head(prototypes)
+        loss_ce = F.cross_entropy(
+            logits / temperature, labels
+        )
+
+        # Hạn chế head thay đổi quá xa bản đã học trên ảnh thật.
+        loss_anchor = sum(
+            (p - initial_params[name]).square().mean()
+            for name, p in calibrated_head.named_parameters()
+        )
+        loss = loss_ce + anchor_weight * loss_anchor
+
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+
+    print(
+        f"[Prototype calibration] classes={num_classes}, "
+        f"CE={loss_ce.item():.4f}, "
+        f"anchor={loss_anchor.item():.6f}"
+    )
+
+    calibrated_head.eval()
+    return calibrated_head.to(dtype=model.head.weight.dtype)
 
 
 
