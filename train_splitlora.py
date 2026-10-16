@@ -477,13 +477,7 @@ def evaluate_tasks_sofar(GVM: GlobalVarsManager, train_taskid: int, model: Visio
     model = modify_head(GVM, model, training=False)
     original_head = model.head
     if train_taskid > 0:
-    model.head = calibrate_head_with_prototypes(
-        GVM,
-        model,
-        steps=100,
-        lr=1e-3,
-        anchor_weight=0.1,
-    )
+         model.head = calibrate_head_with_prototypes(GVM,model,steps=100,lr=1e-3,anchor_weight=0.1,)
     torch.cuda.empty_cache()
     average_acc_meter = misc.ScalarMeter(acc_class_inc="samp_avg:>6.2%")
 
