@@ -233,7 +233,7 @@ def _inc_loss(GVM, features, features_old):
         protos = F.normalize(protos, p=2, dim=1)
         similarity = torch.matmul(protos, features_old_norm.t())
         loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
-        return GVM.args.beta * loss_align + GVM.args.gamma * loss_orth
+        return  GVM.args.gamma * loss_orth
 @torch.no_grad()
 # tính vecto ( phương thúc từ risat)
 def _extract_vectors(model, loader):
@@ -312,7 +312,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
             # lấy inc loss để tính thêm ( ce_loss là loss gốc của splitlora ở đây t muốn thêm 1 hàm tính loss của risat vào nữa để cải tiến nếu bây giờ thay ce loss đi thì phải thay hàm 
             # tính toán của nó . Có thể thử thay thế ce_loss) 
             loss_inc = _inc_loss(GVM, features, features_old)
-            loss = ce_loss 
+            loss = ce_loss + loss_inc
 
         optimizer.zero_grad()
         amp_scalar.scale(loss).backward()
