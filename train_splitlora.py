@@ -224,16 +224,17 @@ class AutoencoderSigmoid(BaseAttention):
             nn.Sigmoid())
 # thêm phương thức inc_loss từ risat ( đã điều chỉnh cho khớp với splitlora , chỉ thay tên biến chứ không sửa phần logic)
 # phương thức này dành cho các task > 0 
-def _inc_loss(GVM, features, features_old):
-        features_old = GVM.old_ae(features_old)
-        loss_align = nn.MSELoss()(features, features_old)
-        features_old_norm = F.normalize(features_old, p=2, dim=1)
-        protos = torch.from_numpy(GVM._class_means).float().to(features.device,non_blocking=True)
-        protos = GVM.old_ae(protos)
-        protos = F.normalize(protos, p=2, dim=1)
-        similarity = torch.matmul(protos, features_old_norm.t())
-        loss_orth = similarity.sum() / (similarity.shape[0]*similarity.shape[1])
-        return  GVM.args.gamma * loss_orth
+def _inc_loss(GVM, features, features_old=None):
+    protos = torch.as_tensor(
+        GVM._class_means,
+        dtype=torch.float32,
+        device=features.device,
+    )
+    protos = F.normalize(GVM.old_ae(protos), dim=1)
+    features_norm = F.normalize(features.float(), dim=1)
+
+    similarity = protos @ features_norm.T
+    return GVM.args.gamma * similarity.mean()
 @torch.no_grad()
 # tính vecto ( phương thúc từ risat)
 def _extract_vectors(model, loader):
@@ -307,7 +308,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
         if taskid == 0:
               lambda_rs = 0.5 * min(1.0, (curr_epoch - 1) / 10) #tính lambda
               rs_loss = rs_loss_fn(features.float(), target) # tính rs loss
-              loss = ce_loss + rs_loss  # tính loss
+              loss = ce_loss + lambda_rs * rs_loss  # tính loss
         else:
             # lấy inc loss để tính thêm ( ce_loss là loss gốc của splitlora ở đây t muốn thêm 1 hàm tính loss của risat vào nữa để cải tiến nếu bây giờ thay ce loss đi thì phải thay hàm 
             # tính toán của nó . Có thể thử thay thế ce_loss) 
