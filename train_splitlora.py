@@ -227,21 +227,13 @@ class AutoencoderSigmoid(BaseAttention):
 def _inc_loss(GVM, features, features_old):
     # Prototype và mạng cũ là các mốc cố định trong bước học.
     with torch.no_grad():
-        protos = torch.as_tensor(
-            GVM._class_means,
-            dtype=torch.float32,
-            device=features.device,
-        )
+        protos = torch.as_tensor(GVM._class_means,dtype=torch.float32,device=features.device,)
         protos = F.normalize(protos, dim=1)
         old_norm = F.normalize(features_old.float(), dim=1)
         similarity_old = old_norm @ protos.T
-
     new_norm = F.normalize(features.float(), dim=1)
     similarity_new = new_norm @ protos.T
-
-    return GVM.args.lambda_rel * F.mse_loss(
-        similarity_new, similarity_old
-    )
+    return GVM.args.lambda_rel * F.mse_loss(similarity_new, similarity_old)
 # tính vecto ( phương thúc từ risat)
 @torch.no_grad()
 def _extract_vectors(model, loader):
@@ -249,20 +241,14 @@ def _extract_vectors(model, loader):
     model.eval()
     device = next(model.parameters()).device
     vectors, targets = [], []
-
     try:
         for images, labels in loader:
             images = images.to(device, non_blocking=True)
             features = model.encode_image(images, pre_logits=True)
-
             vectors.append(features.detach().float().cpu().numpy())
             targets.append(labels.detach().cpu().numpy())
     finally:
         model.train(was_training)
-
-    if not vectors:
-        raise ValueError("Loader trích feature không có dữ liệu.")
-
     return (
         np.concatenate(vectors, axis=0),
         np.concatenate(targets, axis=0),
