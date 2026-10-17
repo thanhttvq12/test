@@ -113,7 +113,7 @@ def get_args():
     parser.add_argument('--decay_rate', type=float, default=0.1)
     parser.add_argument('--show_bar', action='store_true')
     parser.add_argument('--print_model', action='store_true')
-    parser.add_argument("--lambda_rel", type=float, default=0.3)
+    parser.add_argument("--lambda_rel", type=float, default=0.5)
     args = parser.parse_args()
 
     return args
