@@ -151,6 +151,7 @@ class LoRALayer(torch.nn.Module):
         with torch.no_grad():
             if task_id == 0:
                 return 
+            a_scale = float(os.environ.get("LORA_A_SCALE", "1.0"))
             A = self.lora_A[0].weight
             B = self.lora_B[0].weight
             basis = self.feature_list.to(device=A.device, dtype=A.dtype)
