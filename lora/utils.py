@@ -115,8 +115,6 @@ import wandb
 import math
 
 
-
-
 class LoRALayer(torch.nn.Module):
     def __init__(self, in_dim, out_dim, rank, alpha, pos='',layer=0,):
         super().__init__()
@@ -146,21 +144,49 @@ class LoRALayer(torch.nn.Module):
         nn.init.kaiming_uniform_(self.lora_A[task_id].weight, a=math.sqrt(5))
         nn.init.zeros_(self.lora_B[task_id].weight)
         self.task_id = task_id
-    def update_grad_before_train(self, task_id):
-
+        def update_grad_before_train(self, task_id):
         with torch.no_grad():
             if task_id == 0:
-                return 
-            a_scale = float(os.environ.get("LORA_A_SCALE", "1.0"))
+                return
+            strength = float(os.environ.get("LORA_A_PROTECT", "1.0"))
             A = self.lora_A[0].weight
             B = self.lora_B[0].weight
-            basis = self.feature_list.to(device=A.device, dtype=A.dtype)
-            coeffs = torch.randn(basis.shape[1], self.rank,device=A.device, dtype=A.dtype,)
-            new_A = (basis @ coeffs).T
-            new_A = (new_A / new_A.norm().clamp_min(1e-12)* self.initial_A_norm.to(device=A.device, dtype=A.dtype)/ (task_id + 1) * a_scale  )
-            self.old_weight.add_(B @ A)
-            A.copy_(new_A)
-            B.zero_()
+            calc_dtype = (torch.float64
+                if A.dtype == torch.float64
+                else torch.float32
+            )
+
+            with torch.autocast(
+                device_type=A.device.type, enabled=False
+            ):
+                U = self.feature_list.to(device=A.device, dtype=calc_dtype)
+                C = self.cur_matrix.detach().to(device=A.device, dtype=calc_dtype)
+                C = 0.5 * (C + C.T)
+                mean_energy = C.diagonal().mean().clamp_min(0)
+                C_normalized = C / (mean_energy + 1e-12)
+                H = U.T @ C_normalized @ U
+                H = 0.5 * (H + H.T)
+                eigenvalues, V = torch.linalg.eigh(H)
+                tolerance = (1e-5 * eigenvalues.abs().max().clamp_min(1.0))
+                eigenvalues = eigenvalues.clamp_min(0)
+                coeffs = torch.randn(U.shape[1],self.rank,device=A.device,dtype=calc_dtype,)
+                Z0 = coeffs.T
+                raw_A = Z0 @ U.T
+                target_norm = self.initial_A_norm.to(device=A.device, dtype=calc_dtype)
+                Z0 = Z0 * (target_norm / raw_A.norm().clamp_min(1e-12))
+                factors = 1.0 / ( 1.0 + strength * eigenvalues)
+                if strength == 0:
+                    Znew = Z0
+                else:
+                    Znew = (
+                        (Z0 @ V) * factors.unsqueeze(0)) @ V.T
+                new_A = Znew @ U.T
+                new_A = new_A.to(dtype=A.dtype)
+                norm_ratio = (new_A.to(calc_dtype).norm()/ target_norm.clamp_min(1e-12)).item()
+                merged_weight = (self.old_weight.to(calc_dtype) + B.to(calc_dtype) @ A.to(calc_dtype)).to(self.old_weight.dtype)
+                self.old_weight.copy_(merged_weight)
+                A.copy_(new_A)
+                B.zero_()
     def update_grad_after_train(self, task_id):
         with torch.no_grad():
             activation = self.cur_matrix
