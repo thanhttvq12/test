@@ -144,8 +144,8 @@ class LoRALayer(torch.nn.Module):
         nn.init.kaiming_uniform_(self.lora_A[task_id].weight, a=math.sqrt(5))
         nn.init.zeros_(self.lora_B[task_id].weight)
         self.task_id = task_id
-        def update_grad_before_train(self, task_id):
-        with torch.no_grad():
+    def update_grad_before_train(self, task_id):
+         with torch.no_grad():
             if task_id == 0:
                 return
             strength = float(os.environ.get("LORA_A_PROTECT", "1.0"))
