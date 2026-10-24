@@ -312,7 +312,7 @@ def train_one_epoch(GVM: GlobalVarsManager, curr_epoch: int, dataloader: DataLoa
               loss = ce_loss + lambda_rs * rs_loss  # tính loss
         else:
             # lấy inc loss để tính thêm ( ce_loss là loss gốc của splitlora ở đây t muốn thêm 1 hàm tính loss của risat vào nữa để cải tiến nếu bây giờ thay ce loss đi thì phải thay hàm 
-            # tính toán của nó . Có thể thử thay thế ce_loss) 
+            # tính toán của nó . Có thể thử thay thế ce_loss)  cái phạt khoảng cách quan hệ của là lấy từ concm
             loss_inc = _inc_loss(GVM, features, features_old)
             loss = ce_loss + loss_inc
 
