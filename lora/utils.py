@@ -151,13 +151,12 @@ class LoRALayer(torch.nn.Module):
         with torch.no_grad():
             if task_id == 0:
                 return 
-            a_scale = float(os.environ.get("LORA_A_SCALE", "1.0"))
             A = self.lora_A[0].weight
             B = self.lora_B[0].weight
             basis = self.feature_list.to(device=A.device, dtype=A.dtype)
             coeffs = torch.randn(basis.shape[1], self.rank,device=A.device, dtype=A.dtype,)
             new_A = (basis @ coeffs).T
-            new_A = (new_A / new_A.norm().clamp_min(1e-12)* self.initial_A_norm.to(device=A.device, dtype=A.dtype)/ (task_id + 1) * a_scale  )
+            new_A = (new_A / new_A.norm().clamp_min(1e-12)* self.initial_A_norm.to(device=A.device, dtype=A.dtype)/ (task_id + 1) )
             self.old_weight.add_(B @ A)
             A.copy_(new_A)
             B.zero_()
