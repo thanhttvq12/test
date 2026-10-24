@@ -166,10 +166,6 @@ class LoRALayer(torch.nn.Module):
     def update(self, task_id):
         """
         Dong bo task id cua layer.
-
-        KHONG gop B@A o day: viec gop do `update_grad_before_train` dam nhiem
-        (noi biet chinh xac thoi diem chuyen task). Neu gop o ca hai noi
-        thi ph bien doi se bi tinh doi.
         """
         self.task_id = task_id
     def update_grad_before_train(self, task_id):
